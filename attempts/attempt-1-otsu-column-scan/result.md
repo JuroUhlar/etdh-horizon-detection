@@ -51,6 +51,44 @@ done
 
 No ground-truth annotations available yet, so errors are assessed visually from the annotated outputs in [`outputs/`](outputs/). Timings are on an M-series Mac, not on the Raspberry Pi 5 target.
 
+## Full-dataset scoreboard (Horizon-UAV, 490 images)
+
+Numerical evaluation against the mask-derived `label.csv` from the Horizon-UAV dataset, using `tools/evaluate.py`. Metrics are defined in [`docs/evaluation-metrics.md`](../../docs/evaluation-metrics.md) (`Δθ` = mod-180 angular error in degrees; `Δρ` = positional error in canonical Hesse form, in pixels; `Δρ/H` = same, normalised by image height; IoU = intersection-over-union of the predicted sky mask against the GT sky mask).
+
+| Metric | mean | P50 | P90 | max |
+|---|---:|---:|---:|---:|
+| Δθ (deg) | 10.46 | 1.41 | 36.79 | 85.06 |
+| Δρ (px) | 70.74 | 10.99 | 274.91 | 538.32 |
+| Δρ / H | 14.7% | 2.3% | 57.3% | 112.2% |
+| Sky-mask IoU | 0.926 | 0.950 | 0.984 | 0.997 |
+| Latency (ms) | 0.77 | 0.68 | 0.79 | 38.5 |
+
+**Pass rate (Δθ < 5° AND Δρ/H < 5%): 306/490 = 62.4%.**
+
+Reproduce with:
+
+```bash
+.venv/bin/python tools/evaluate.py attempts/attempt-1-otsu-column-scan
+```
+
+### What these numbers tell us
+
+- **The median sample is handled correctly** (P50 Δθ = 1.4°, P50 Δρ/H = 2.3%) — Otsu + column-scan *works* on typical UAV footage where sky-on-top and "sky is brighter" both hold.
+- **The tail is catastrophic.** P90 Δθ = 37°, worst 85° — on 10% of frames the fit is off by tens of degrees, and ~38% of frames fail the pass gate.
+- **Sky-mask IoU is already 0.93 mean / 0.95 median** — the *classifier* is mostly correct even when the *fitter* produces garbage. This isolates where the errors are coming from: the line-extraction step, not the segmentation.
+
+### Worst-case analysis
+
+Three representative worst offenders (annotated predictions saved in [`outputs/worst_cases/`](outputs/worst_cases/)):
+
+| Image | Δθ | IoU | Root cause |
+|---|---:|---:|---|
+| `a4-…_0.jpg` | 85.06° | 0.877 | High-roll overcast scene: sky (dull grey) and ground (dark greens) have near-identical luminance, so Otsu splits the image along some other feature entirely. IoU stays high because the right number of pixels end up on each side — just along the wrong dividing line. |
+| `e6-…_140.jpg` | 75.21° | 0.613 | Bright sun glare on the right half of the sky. Otsu isolates the glare *as "sky"* and lumps real sky (clouds) in with the ground. Fit tracks the glare boundary, not the horizon. |
+| `d6-…_140.jpg` | 75.05° | 0.613 | Near-duplicate of the e6 scene; same failure mode. |
+
+**Pattern:** every worst case is a *classifier* failure, not a *fitter* failure. Brightness is an unreliable sky/ground cue under overcast sky (sky≈ground luminance) or direct sun (bright sub-region inside the sky). The fitter then dutifully fits a line to the wrong boundary. This is the primary target for attempt 3.
+
 ## Failure modes (the interesting part)
 
 The baseline encodes three assumptions. The four samples violate all of them:
@@ -77,5 +115,5 @@ A good attempt 2 = (1) alone. Attempt 3 = add (2). Attempt 4 = swap to (3) if ac
 
 ## Open items (not blockers for attempt 1)
 
-- No ground-truth annotations on the samples → accuracy is eyeballed, not measured. Before attempt 3 we'll want manual annotations (two clicked points per image) so we can compute angle and offset error numerically.
+- ~~No ground-truth annotations on the samples → accuracy is eyeballed, not measured.~~ *Resolved:* the Horizon-UAV dataset ships `label.csv` + per-image masks; see the scoreboard above. Our four starter samples still need manual labels if we want per-sample numerical scores (especially for the rotated cases not represented in the dataset).
 - Timings are on a dev laptop, not on the Raspberry Pi 5. Need to re-benchmark on target hardware before trusting the "≥15 FPS" claim.

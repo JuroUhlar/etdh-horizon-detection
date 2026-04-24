@@ -61,6 +61,50 @@ Note on "offset = vertical": for near-vertical horizons (|vx| < 1e-6), the y = m
 | sample3 | 0° / 0 px (pinned to top) | −0.52° / +195.5 px | Degenerate → correct horizontal fit |
 | sample4 | 0° / 0 px (pinned to top) | +89.51° / vertical | Degenerate → correct vertical fit |
 
+## Full-dataset scoreboard (Horizon-UAV, 490 images)
+
+Numerical evaluation against the mask-derived `label.csv` from the Horizon-UAV dataset, using `tools/evaluate.py`. Metrics are defined in [`docs/evaluation-metrics.md`](../../docs/evaluation-metrics.md).
+
+| Metric | Attempt 1 | **Attempt 2** | Change |
+|---|---:|---:|---|
+| Δθ mean | 10.46° | **7.31°** | −30% |
+| Δθ P50 | 1.41° | **0.92°** | sub-degree on median |
+| Δθ P90 | 36.79° | **32.04°** | tail still rough |
+| Δθ max | 85.06° | 88.74° | worst case slightly worse |
+| Δρ / H mean | 14.7% | **7.6%** | halved |
+| Δρ / H P50 | 2.3% | **1.6%** | — |
+| Δρ / H P90 | 57.3% | **21.2%** | tail materially tighter |
+| Sky-mask IoU mean | 0.926 | 0.929 | unchanged (same classifier) |
+| Latency mean | 0.77 ms | 3.57 ms | +2.8 ms (still ~280 FPS on dev machine) |
+| **Pass rate** (Δθ<5° & Δρ/H<5%) | 62.4% | **81.2%** | **+18.8 pp** |
+
+Reproduce with:
+
+```bash
+.venv/bin/python tools/evaluate.py attempts/attempt-2-rotation-invariant
+```
+
+### What these numbers tell us
+
+- **Pass rate is up 18.8 percentage points.** The rotation-invariant boundary extraction + Huber line fit recover a large fraction of the easy-to-medium cases that attempt 1's column-scan botched.
+- **Sky-mask IoU is unchanged.** Moving from 0.926 to 0.929 is statistically nothing — the *classifier* (shared between attempts 1 and 2) didn't change. This is the clean signal that all improvements in attempt 2 came from the line-fit step alone. It's also a preview of why we can't go much further without changing the classifier: IoU can't go up until the sky mask does.
+- **Median is sub-degree.** On typical samples the fit is within ~1° of ground truth.
+- **Tail is still catastrophic** and substantially unchanged: max Δθ goes 85° → 89°. Attempt 2 can't help when the classifier hands it a mask whose boundary doesn't correspond to the real horizon.
+
+### Worst-case analysis
+
+The three worst offenders (annotated predictions saved in [`outputs/worst_cases/`](outputs/worst_cases/)) are the same three scenes that stumped attempt 1 — consistent with the shared-classifier theory:
+
+| Image | Δθ | IoU | Root cause (classifier-level) |
+|---|---:|---:|---|
+| `a4-…_0.jpg` | 88.49° | 0.877 | High-roll overcast: sky (dull grey) and ground (dark greens) have near-identical luminance → Otsu splits along the wrong feature. Attempt 2 then fits cleanly to the *wrong* boundary. |
+| `e6-…_140.jpg` | 88.74°/88.08°* | 0.705 | Sun glare on the right side of the frame is brighter than real sky. Otsu labels glare = sky, real sky = ground. Boundary tracks the glare, not the horizon. |
+| `d6-…_140.jpg` | 88.08° | 0.707 | Near-duplicate of e6; same failure mode. |
+
+*attempt 2's worst was actually `e6-…_160.jpg` (Δθ 88.74°); `_140.jpg` is 88.08°. Same clip, same failure mode.
+
+**Pattern:** IoU 0.7–0.9 on the worst cases means Otsu got most of the pixels right, but the boundary it produced doesn't correspond to the real horizon. That's a pure classifier-failure signature — and the target for attempt 3.
+
 ## Failure modes still present
 
 - **Failure mode 1 — haze misclassified as ground.** Sample 1's red line sits ~60 px below the true horizon because Otsu's cutoff lands at the bottom of the *bright* upper sky, treating the washed-out haze band as ground. Huber doesn't help: the haze produces a *coherent cluster* of incorrect boundary points, not isolated outliers. This genuinely needs a smarter sky/ground classifier.
@@ -74,6 +118,6 @@ Note on "offset = vertical": for near-vertical horizons (|vx| < 1e-6), the y = m
    
    Either should fix sample 1's haze issue. Keep the rotation-invariant boundary fitter from this attempt as the downstream stage.
 
-2. **Get ground-truth annotations.** Every claim above is eyeballed. Before attempt 3 we should label the true horizon on the four samples (two points per image) so accuracy can be reported as an angular error in degrees and an offset error in pixels — the actual hackathon metric.
+2. ~~**Get ground-truth annotations.** Every claim above is eyeballed.~~ *Resolved above.* The Horizon-UAV dataset gives us 490 labelled images and a numerical scoreboard. The four starter samples still lack per-sample labels and would need manual annotation (especially the rotated cases, which aren't represented in the upstream dataset).
 
 3. **Benchmark on Raspberry Pi 5.** Timings here (3–13 ms on an M-series Mac) don't tell us anything about the ≥15 FPS target on ARM. Worth a pass early to spot any OpenCV build / BLAS issues before investing in a heavier classifier.
