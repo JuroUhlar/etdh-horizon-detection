@@ -58,23 +58,41 @@ warning flag and re-verify on hardware.
 
 ## Configuration
 
-All limits are controlled by environment variables with the defaults above. Override
-them in a `.env` file or via `docker compose` for 8 GB variant testing.
+Resource limits are hardcoded in `docker-compose.yml`. To run with an 8 GB variant
+or different limits, edit those values directly.
+
+## Per-experiment dependencies
+
+Each attempt ships its own `requirements.txt`. There is no root-level requirements
+file. Install before running:
+
+```bash
+docker compose run --rm horizon sh -c \
+  "pip install -q -r attempts/<N>/requirements.txt && python attempts/<N>/horizon_detect.py ..."
+```
+
+## Directory layout
 
 ```
-# .env (optional overrides)
-CONTAINER_CPUS=3
-CONTAINER_MEMORY=3584m
-PYTHON_VERSION=3.12
+hack-horizon/
+├── docker/
+│   ├── Dockerfile           # base image only — no pip installs
+│   └── .dockerignore
+└── docker-compose.yml       # resource limits + bind-mount wiring
 ```
 
-## Open items (resolve before writing Dockerfile)
+## Open items
 
-- [ ] Confirm which script(s) the container needs to invoke as its default entrypoint
-      (one-off image, batch evaluate, or live video stream).
-- [ ] Decide whether `data/` (490-image dataset, ~400 MB) is bind-mounted from host or
-      baked into the image. Bind-mount is strongly preferred to keep the image small.
-- [ ] Confirm whether `tools/evaluate.py` will be run inside the container or on the
-      host against container output.
-- [ ] Pin exact package versions once the Dockerfile is written (for reproducibility
-      across team members).
+- [ ] Confirm which script(s) the container needs to invoke as its primary use case
+      (one-off image, batch evaluate, or live video stream). Currently no fixed
+      entrypoint — any script can be passed to `docker compose run --rm horizon python ...`.
+- [ ] Pin exact package versions in each attempt's `requirements.txt` once the image
+      builds cleanly (for reproducibility across team members).
+
+### Resolved
+
+- **Bind-mount vs bake-in:** `data/` and all source are bind-mounted at runtime.
+  The image only contains the Python runtime and apt-installed system libs.
+- **Evaluator location:** `tools/evaluate.py` runs inside the container against the
+  bind-mounted dataset and source.
+- **Root-level requirements:** removed — dependencies stay scoped to each attempt.
