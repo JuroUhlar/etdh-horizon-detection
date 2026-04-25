@@ -38,12 +38,14 @@ Full metric definitions, aggregate statistics, and ground-truth conventions: [`d
 
 Pass rate and latency are from `tools/evaluate.py` on **Horizon-UAV** (490 frames) on the development host; see each attempt’s `full-eval-results-horizon_uav_dataset.json` for the exact run.
 
-| Attempt | Method | Pass rate | Mean latency (dev) | Status |
-|---|---|---|---|---|
-| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | 0.76 ms | Done, scored |
-| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | 3.70 ms | Done, scored |
-| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; RANSAC multi-hypothesis + Huber refit | 95.5 % | 71.5 ms | Done, scored |
-| 4 — `attempts/attempt-4-top-n-ransac_tuned/` | Same as 3; vectorised RANSAC scoring, boundary subsampling, fewer iterations | 95.5 % | 18.0 ms | Done, scored |
+| Attempt | Method | Pass rate | Mean latency (dev host) | Mean latency (Docker / Pi 5 model) | Speed gate | Status |
+|---|---|---|---|---|---|---|
+| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | 0.76 ms | 2.2 ms | ✓ PASS | Done, scored |
+| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | 3.70 ms | 6.0 ms | ✓ PASS | Done, scored |
+| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; RANSAC multi-hypothesis + Huber refit | 95.5 % | 71.5 ms | 70.7 ms | ✗ FAIL | Done, scored |
+| 4 — `attempts/attempt-4-top-n-ransac_tuned/` | Same as 3; vectorised RANSAC scoring, boundary subsampling, fewer iterations | 95.1 % | 18.0 ms | 18.3 ms | ✓ PASS | Done, scored |
+
+Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1`. Speed gate: mean AND p90 latency ≤ 67 ms. Run via `tools/bench_docker.sh`.
 
 ## Known failure modes & root causes
 

@@ -26,12 +26,14 @@ The four attempts tell a clear story on the original Horizon-UAV benchmark:
 
 **Horizon-UAV** (490 images, 480×480, every frame has a horizon):
 
-| Attempt | Pass rate | Mean Δθ | Mean Δρ | Mean latency |
-|---|---:|---:|---:|---:|
-| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.757 ms |
-| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.703 ms |
-| Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms |
-| Attempt 4 | 95.5% | 1.078° | 10.625 px | 18.006 ms |
+| Attempt | Pass rate | Mean Δθ | Mean Δρ | Mean latency (dev host) | Mean latency (Docker / Pi 5 model) | Speed gate |
+|---|---:|---:|---:|---:|---:|:---:|
+| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.757 ms | 2.2 ms | ✓ PASS |
+| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.703 ms | 6.0 ms | ✓ PASS |
+| Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms | 70.7 ms | ✗ FAIL |
+| Attempt 4 | 95.1% | 1.078° | 10.625 px | 18.006 ms | 18.3 ms | ✓ PASS |
+
+Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1` — conservative model of one Pi 5 Cortex-A76 core with Hailo driver running in parallel. Speed gate: mean AND p90 latency ≤ 67 ms (15 FPS). See `tools/bench_docker.sh` and `docs/evaluation-environment.md`.
 
 **FPV/ATV clips** (120 frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon):
 

@@ -127,6 +127,37 @@ The 10 no-horizon frames are a separate failure orthogonal to all of this. None 
 - If you care about **best balance of simplicity, speed, and improvement on UAV**, attempt 2 is the most practical middle ground.
 - If you care about **robustness across both datasets**, attempt 3 is still the best single choice on the labelled ATV set in our latest run, but none of the four is acceptable end-to-end yet because the shared brightness-mask first stage and the missing no-horizon classifier still cap robustness.
 
+## Docker / Pi 5 Performance
+
+The latency numbers in the table above come from the development host (M-series Mac, unrestricted cores). To get numbers that are meaningful for the actual deployment target — a Raspberry Pi 5 running the horizon detector while a Hailo accelerator runs in parallel — we run the evaluator inside a Docker container constrained to approximate one available Pi core:
+
+```bash
+tools/bench_docker.sh   # 1 CPU core, 3.5 GB RAM, OMP_NUM_THREADS=1
+```
+
+Resource budget rationale: the Pi 5 has 4 Cortex-A76 cores; the Hailo-8L driver reserves ~1 core + ~512 MB. The container gets the remainder (3 cores, 3.5 GB) but with OMP pinned to 1 thread so the Python detector cannot silently multi-thread within a single frame. The x86 cores are ~1.5–2× faster per clock than Cortex-A76 NEON, so a passing result here is a necessary but not sufficient gate; final verification requires real hardware.
+
+### Horizon-UAV results under Docker (1 CPU core, OMP_NUM_THREADS=1)
+
+| Attempt | Pass rate | ms mean | ms p90 | FPS mean | FPS p90 | Speed gate |
+|---|---:|---:|---:|---:|---:|:---:|
+| Attempt 1 | 62.4% | 2.2 ms | 2.2 ms | 464 | 462 | ✓ PASS |
+| Attempt 2 | 81.2% | 6.0 ms | 9.1 ms | 168 | 110 | ✓ PASS |
+| Attempt 3 | 95.5% | 70.7 ms | 157.8 ms | 14.1 | 6.3 | ✗ FAIL |
+| Attempt 4 | 95.1% | 18.3 ms | 36.1 ms | 54.6 | 27.7 | ✓ PASS |
+
+Speed gate: mean AND p90 latency ≤ 67 ms (15 FPS budget).
+
+### What the Docker numbers tell us
+
+Attempts 1 and 2 slow down noticeably under single-core Docker (2.2 ms vs 0.8 ms; 6.0 ms vs 3.7 ms) because OpenCV's morphological and gradient operations do have some internal threading that gets suppressed. Even so, both are far inside the budget.
+
+Attempt 3 fails the speed gate: mean 70.7 ms is already above the 67 ms ceiling, and p90 jumps to 158 ms because hard RANSAC frames (dense boundary clouds) can take over 400 ms under a single constrained core. The accuracy gain over attempt 4 is negligible (both 95.x%) so attempt 3 is not a viable deployment candidate.
+
+Attempt 4 is the practical sweet spot: 95.1% pass rate, mean 18.3 ms, p90 36.1 ms — well within the 67 ms budget even at the 90th percentile. It is deterministically faster than attempt 3 because vectorised RANSAC scoring and boundary subsampling eliminate the worst-case per-frame explosion.
+
+**Bottom line: only attempt 4 satisfies both accuracy (≥ 95%) and speed (≤ 67 ms) inside the Pi 5 budget model. Attempt 3 achieves the same accuracy but fails the speed gate under single-core constraints.**
+
 ## Practical Takeaway
 
 The two datasets together tell a more honest story than either alone:

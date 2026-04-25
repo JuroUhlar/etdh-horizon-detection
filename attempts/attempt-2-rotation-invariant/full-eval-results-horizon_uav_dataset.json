@@ -1,11 +1,11 @@
 {
   "attempt": "attempt-2-rotation-invariant",
   "attempt_dir": "attempts/attempt-2-rotation-invariant",
-  "dataset_dir": "/Users/jurajuhlar/Documents/Code/personal/etdh-horizon-detection/data/horizon_uav_dataset",
+  "dataset_dir": "/workspace/data/horizon_uav_dataset",
   "limit": null,
-  "seed": 0,
-  "generated_at_utc": "2026-04-25T16:56:24.419958Z",
-  "wall_clock_s": 3.4508519579976564,
+  "seed": null,
+  "generated_at_utc": "2026-04-25T17:42:39.226576Z",
+  "wall_clock_s": 5.261001544000003,
   "summary": {
     "counts": {
       "total": 490,
@@ -25,19 +25,19 @@
         "delta_rho_norm_lt": 0.05
       },
       "angle_error_deg": {
-        "mean": 7.312541619102326,
+        "mean": 7.312571781521748,
         "median": 0.9166045902527632,
         "p90": 32.036196826172194,
         "worst": 88.74416686939388
       },
       "position_error_norm": {
-        "mean": 0.07645854117358451,
+        "mean": 0.07645839677618817,
         "median": 0.016180252792321197,
         "p90": 0.21185989832796012,
         "worst": 1.2852408886605835
       },
       "hesse_distance_px": {
-        "mean": 36.700099763320566,
+        "mean": 36.70003045257032,
         "median": 7.766521340314174,
         "p90": 101.69275119742086,
         "worst": 616.91562655708
@@ -53,16 +53,16 @@
       "verdict": "PASS",
       "latency_budget_ms": 66.66666666666667,
       "latency_ms": {
-        "mean": 3.5795985019293006,
-        "median": 2.5985005049733445,
-        "p90": 6.828057992970571,
-        "worst": 13.256292004371062
+        "mean": 5.964664108163156,
+        "median": 4.969937500000299,
+        "p90": 9.076991599997797,
+        "worst": 34.22295800000086
       },
       "fps": {
-        "mean": 279.36093935144646,
-        "median": 384.8373314094307,
-        "p90": 146.45452645971838,
-        "worst": 75.43587601044584
+        "mean": 167.65403413604028,
+        "median": 201.20977376474852,
+        "p90": 110.1686598454319,
+        "worst": 29.220150987532257
       },
       "pct_frames_over_budget": 0.0
     },
@@ -93,8 +93,8 @@
       },
       {
         "filename": "d5-converted.mp4-00.04.00.521-00.07.04.857_50.jpg",
-        "delta_theta_deg": 77.9861228484227,
-        "delta_rho_norm": 0.6285482387352634,
+        "delta_theta_deg": 77.98612533345988,
+        "delta_rho_norm": 0.6285482320885784,
         "iou": 0.9171783112031661
       }
     ]
