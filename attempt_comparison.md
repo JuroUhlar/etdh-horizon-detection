@@ -24,6 +24,7 @@ Smaller is better for `Δθ`, `Δρ`, `Δρ / H`, and latency. Bigger is better 
 | Attempt 7 | Run RANSAC on **two** masks (grayscale + Lab b\*), pool the top hypotheses, then pick the winner by how cleanly it splits the frame into two color-coherent regions (Ettinger-style rerank with an angle prior). Filter out near-vertical boundary pixels before RANSAC, and abstain ("no_horizon") when the masks degenerate or no candidate is coherent enough. | First attempt that meaningfully helps on FPV/ATV without losing UAV; first attempt with a working `no_horizon` path | A handful of FPV ground-level treeline shots still fool it (Δθ up to ~38°); abstention thresholds are hand-picked, not swept |
 | Attempt 8 | Keep attempt 7's candidate pool, but add a scene-change-gated temporal prior in the reranker and raise the coherence abstention floor | Best FPV/ATV pass rate so far; improves no-horizon abstention from 6/10 to 8/10 | Loses one UAV frame and increases FPV false abstentions; still does not solve the hardest treeline frames |
 | Attempt 9 | Keep attempt 8, but add a gated low-resolution colour-likelihood + dynamic-programming boundary candidate | Best Horizon-UAV pass rate so far while preserving attempt 8's FPV/ATV score | Extra CPU cost; DP gate is narrow and does not help the FPV treeline/canopy cluster |
+| Attempt 10 | Keep attempt 9, but add a gated top-connected sky-envelope candidate using low-res colour likelihood plus texture | Best combined result so far; improves both Horizon-UAV and FPV/ATV while preserving no-horizon confusion | Extra CPU cost; still misses the hardest semantic treeline/canopy frames |
 
 ## Full Results
 
@@ -39,32 +40,32 @@ The two datasets stress very different things, so we report them side by side ra
 
 ### Horizon-UAV (`490` images, 480×480, every frame has a horizon)
 
-| Metric | Attempt 1 | Attempt 2 | Attempt 3 | Attempt 4 | Attempt 7 | Attempt 8 | Attempt 9 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Pass rate | 62.4% | 81.2% | 95.5% | 95.1% | 96.9% | 96.7% | **97.1%** |
-| Mean Δθ | 10.461° | 7.313° | 1.091° | 1.078° | 0.994° | 1.011° | **0.972°** |
-| P50 Δθ | 1.415° | 0.917° | 0.755° | 0.761° | **0.746°** | 0.755° | 0.747° |
-| P90 Δθ | 36.793° | 32.036° | 2.331° | 2.296° | 2.021° | 2.077° | **2.021°** |
-| Max Δθ | 85.059° | 88.744° | 7.613° | 7.704° | 8.201° | 8.201° | **6.160°** |
-| Mean Δρ (Hesse, px) | 70.744 | 36.700 | 10.201 | 10.625 | 8.836 | 8.947 | **8.798** |
-| Mean Δρ / H | 0.147 | 0.076 | 0.021 | 0.022 | **0.018** | 0.019 | 0.018 |
-| Mean Sky-mask IoU | 0.926 | 0.929 | 0.929 | 0.929 | 0.904 | 0.884 | 0.885 |
-| Mean latency | 0.757 ms | 3.703 ms | 71.502 ms | 18.006 ms | **8.620 ms** | 9.2 ms | 14.3 ms |
+| Metric | Attempt 1 | Attempt 2 | Attempt 3 | Attempt 4 | Attempt 7 | Attempt 8 | Attempt 9 | Attempt 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Pass rate | 62.4% | 81.2% | 95.5% | 95.1% | 96.9% | 96.7% | 97.1% | **97.3%** |
+| Mean Δθ | 10.461° | 7.313° | 1.091° | 1.078° | 0.994° | 1.011° | **0.972°** | 0.991° |
+| P50 Δθ | 1.415° | 0.917° | 0.755° | 0.761° | **0.746°** | 0.755° | 0.747° | 0.777° |
+| P90 Δθ | 36.793° | 32.036° | 2.331° | 2.296° | 2.021° | 2.077° | 2.021° | **2.000°** |
+| Max Δθ | 85.059° | 88.744° | 7.613° | 7.704° | 8.201° | 8.201° | **6.160°** | **6.160°** |
+| Mean Δρ (Hesse, px) | 70.744 | 36.700 | 10.201 | 10.625 | 8.836 | 8.947 | 8.798 | **8.028** |
+| Mean Δρ / H | 0.147 | 0.076 | 0.021 | 0.022 | 0.018 | 0.019 | 0.018 | **0.017** |
+| Mean Sky-mask IoU | 0.926 | 0.929 | 0.929 | 0.929 | 0.904 | 0.884 | 0.885 | 0.909 |
+| Mean latency | 0.757 ms | 3.703 ms | 71.502 ms | 18.006 ms | **8.620 ms** | 9.2 ms | 14.3 ms | 17.9 ms |
 
-Attempt 9 now has the best Horizon-UAV pass rate and line-fit mean metrics, though attempt 7 remains the fastest high-accuracy variant. The mean IoU drop (`0.929 → 0.904 → 0.884`) does not show up proportionally in the pass-gate metrics (Δθ, Δρ); it comes from frames where the *line* is on target but the emitted mask is offset or comes from the less IoU-friendly channel.
+Attempt 10 now has the best Horizon-UAV pass rate and mean line-position error, though attempt 7 remains the fastest high-accuracy variant. The mean IoU drop (`0.929 → 0.904 → 0.884`) did not show up proportionally in the pass-gate metrics (Δθ, Δρ); attempt 10 recovers some IoU by emitting the top-connected sky envelope on the frames where that candidate wins.
 
 Attempt 3 (and, to a lesser extent, 4) is stochastic. If you run the commands above without `--seed`, metrics can wobble slightly; pass `--seed 0` to pin a reproducible result when you need to match a table exactly.
 
 ### FPV/ATV clips (`120` labelled frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon)
 
-| Metric | Attempt 1 | Attempt 2 | Attempt 3 | Attempt 4 | Attempt 7 | Attempt 8 | Attempt 9 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Pass rate | 16.7% | 4.2% | 45.8% | 29.2% | 52.5% | **57.5%** | **57.5%** |
-| Mean Δθ (TP frames only) | 7.7° | 15.9° | 6.5° | 11.5° | 5.6° | **4.8°** | **4.8°** |
-| Mean Δρ (Hesse, px) | 59.7 | 100.0 | 59.8 | 102.2 | 52.8 | **48.9** | **48.9** |
-| Mean Δρ / H | 0.124 | 0.208 | 0.124 | 0.213 | 0.110 | **0.102** | **0.102** |
-| Mean latency | 0.79 ms | 29.8 ms | 731.6 ms | 58.9 ms | 29.3 ms | **26.5 ms** | 35.0 ms |
-| Confusion matrix (TP / FN / FP / TN) | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 105 / 5 / 4 / 6 | **100 / 10 / 2 / 8** | **100 / 10 / 2 / 8** |
+| Metric | Attempt 1 | Attempt 2 | Attempt 3 | Attempt 4 | Attempt 7 | Attempt 8 | Attempt 9 | Attempt 10 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Pass rate | 16.7% | 4.2% | 45.8% | 29.2% | 52.5% | 57.5% | 57.5% | **60.0%** |
+| Mean Δθ (TP frames only) | 7.7° | 15.9° | 6.5° | 11.5° | 5.6° | 4.8° | 4.8° | **4.4°** |
+| Mean Δρ (Hesse, px) | 59.7 | 100.0 | 59.8 | 102.2 | 52.8 | 48.9 | 48.9 | **43.1** |
+| Mean Δρ / H | 0.124 | 0.208 | 0.124 | 0.213 | 0.110 | 0.102 | 0.102 | **0.090** |
+| Mean latency | 0.79 ms | 29.8 ms | 731.6 ms | 58.9 ms | 29.3 ms | **26.5 ms** | 35.0 ms | 37.2 ms |
+| Confusion matrix (TP / FN / FP / TN) | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 110 / 0 / 10 / 0 | 105 / 5 / 4 / 6 | **100 / 10 / 2 / 8** | **100 / 10 / 2 / 8** | **100 / 10 / 2 / 8** |
 
 A few things to read carefully here:
 
@@ -149,6 +150,17 @@ Attempt 9 adds one more candidate source rather than replacing the attempt 8 pip
 
 The gate is the important part. Ungated DP produced plausible-looking but wrong colour splits on treeline/no-horizon and steep UAV frames. Gated DP fires rarely, but it recovers two UAV frames without disturbing the FPV result.
 
+### Attempt 9 -> Attempt 10
+
+- Horizon-UAV pass rate improves from `97.1%` to `97.3%`.
+- FPV/ATV pass rate improves from `57.5%` to `60.0%`.
+- FPV no-horizon confusion stays unchanged at `TP=100 / FN=10 / FP=2 / TN=8`.
+- Docker mean latency rises from `27.3 ms` to `30.3 ms` on Horizon-UAV and from `35.0 ms` to `37.2 ms` on FPV/ATV, still inside the 67 ms speed gate.
+
+Interpretation:
+
+Attempt 10 adds a top-connected sky-envelope candidate. It models top-band vs bottom-band colour and texture at `96x72`, keeps only sky-like components connected to the top border, fits the lower envelope, and admits that line only when conservative area/coverage/texture/coherence gates pass. It recovers three FPV frames (one aerial, two road-approach) without introducing FPV pass regressions, but the hard treeline/canopy cluster remains the worst tail.
+
 ## What Changed On FPV/ATV After Cropping
 
 The original ATV result was dominated by the dataset itself: large black side bars created strong artificial edges and pulled the detectors, especially the RANSAC pipeline, toward the frame border instead of the horizon. Rewriting the ATV frames to remove those bars changes the story completely.
@@ -170,10 +182,10 @@ The 10 no-horizon frames are a separate failure orthogonal to all of this. None 
 
 ## Recommended Reading Of The Results
 
-- If you care most about **raw accuracy on the Horizon-UAV benchmark**, attempt 9 now leads on pass rate and mean line metrics.
+- If you care most about **raw accuracy on the Horizon-UAV benchmark**, attempt 10 now leads on pass rate and mean line-position error.
 - If you care most about **speed**, attempt 1 is still the winner, but its accuracy is limited on both datasets.
 - If you care about **best balance of simplicity, speed, and improvement on UAV**, attempt 2 is the most practical middle ground.
-- If you care about **robustness across both datasets**, attempt 9 is the current best default: it preserves attempt 8's FPV/ATV score and no-horizon abstention while improving Horizon-UAV. Attempts 1–4 share a brightness-mask first stage and a no-abstention policy that together cap their FPV/ATV ceiling at 91.7%.
+- If you care about **robustness across both datasets**, attempt 10 is the current best default: it improves both Horizon-UAV and FPV/ATV while preserving attempt 8/9's no-horizon abstention. Attempts 1–4 share a brightness-mask first stage and a no-abstention policy that together cap their FPV/ATV ceiling at 91.7%.
 
 ## Docker / Pi 5 Performance
 
@@ -195,7 +207,8 @@ Resource budget rationale: the Pi 5 has 4 Cortex-A76 cores; the Hailo-8L driver 
 | Attempt 4 | 95.1% | 17.6 ms | 33.9 ms | 56.7 | 29.5 | ✓ PASS |
 | Attempt 7 | **96.9%** | 22.3 ms | 22.2 ms | 44.9 | 45.1 | ✓ PASS |
 | Attempt 8 | 96.7% | 21.5 ms | 21.7 ms | 46.5 | 46.0 | ✓ PASS |
-| Attempt 9 | **97.1%** | 27.3 ms | 29.5 ms | 36.7 | 33.9 | ✓ PASS |
+| Attempt 9 | 97.1% | 27.3 ms | 29.5 ms | 36.7 | 33.9 | ✓ PASS |
+| Attempt 10 | **97.3%** | 30.3 ms | 30.7 ms | 33.0 | 32.5 | ✓ PASS |
 
 Speed gate: mean AND p90 latency ≤ 67 ms (15 FPS budget).
 
@@ -211,9 +224,9 @@ Attempt 7 spends roughly 4 ms more per frame on average than attempt 4 (Lab conv
 
 Attempt 8 adds only a tiny per-frame cost for a 16x16 scene thumbnail and a scalar temporal prior. Its Docker timing is effectively the same as attempt 7 on Horizon-UAV and a little faster on the final FPV run (`26.5 ms` vs attempt 7's `29.3 ms`), with both well under the 67 ms speed gate.
 
-Attempt 9 spends another ~6 ms per UAV frame on the low-resolution likelihood-DP candidate, but its p90 is still only 29.5 ms. On FPV/ATV the Docker mean is 35.0 ms and p90 is 37.9 ms, also well within budget.
+Attempt 9 spends another ~6 ms per UAV frame on the low-resolution likelihood-DP candidate, but its p90 is still only 29.5 ms. Attempt 10 adds the top-connected sky-envelope pass and raises Docker mean latency to 30.3 ms on UAV and 37.2 ms on FPV/ATV, also well within budget.
 
-**Bottom line: attempts 4, 7, 8, and 9 satisfy accuracy (≥ 95% on UAV) and speed (≤ 67 ms) inside the Pi 5 budget model. Attempt 9 is the best current default when both datasets matter. Attempt 3 still fails the speed gate under single-core constraints.**
+**Bottom line: attempts 4, 7, 8, 9, and 10 satisfy accuracy (≥ 95% on UAV) and speed (≤ 67 ms) inside the Pi 5 budget model. Attempt 10 is the best current default when both datasets matter. Attempt 3 still fails the speed gate under single-core constraints.**
 
 ## Practical Takeaway
 
@@ -226,4 +239,5 @@ The two datasets together tell a more honest story than either alone:
 5. The two missing pieces — "stop trusting the brightness mask as a proxy for the horizon" and "let the detector abstain when no horizon is present" — were addressed in attempt 7 by pooling candidates from a second mask source, reranking on color-region coherence rather than inlier count, and abstaining when no candidate clears a coherence floor. Both UAV and FPV pass rates improved at the same time, which previous attempts had not managed.
 6. Attempt 8 shows that video continuity can recover a few more FPV frames and reduce no-horizon false positives, but a single scalar coherence floor also creates more false abstentions.
 7. Attempt 9 shows that a dense colour-likelihood boundary can recover a few UAV cases, but only with a strict gate; ungated DP is too willing to fit semantic non-horizons.
-8. The remaining failure mass is concentrated in FPV ground-level treeline shots (canopy partly clips the horizon) and in separating weak true horizons from true no-horizon frames. Those are the obvious targets for any future attempt.
+8. Attempt 10 shows that a top-connected sky envelope can recover some road/aerial FPV misses without weakening no-horizon abstention.
+9. The remaining failure mass is concentrated in FPV ground-level treeline shots (canopy partly clips the horizon) and in separating weak true horizons from true no-horizon frames. Those are the obvious targets for any future attempt.

@@ -48,11 +48,12 @@ Pass rate and latency are from `tools/evaluate.py` on **Horizon-UAV** (490 frame
 | 6 — `attempts/attempt-6-dual-channel-ransac/` | Dual-channel (gray + Lab b\*) Otsu, confidence-pick winner, 0° row-scan fallback | 92.5 % | 8.3 % | (not benched) | (not benched) | — | Done, scored — regression on FPV |
 | 7 — `attempts/attempt-7-multicue-ettinger/` | Pool top-K from gray + Lab b\* RANSAC; Sobel orientation filter; rerank by Ettinger coherence × angle prior on 60×60 Lab thumbnail; abstain on degenerate masks / low coherence | **96.9 %** | **52.5 %** | 8.62 ms | 22.3 ms | ✓ PASS | Done, scored |
 | 8 — `attempts/attempt-8-temporal-prior/` | Attempt 7 plus scene-change-gated temporal prior in candidate rerank; calibrated coherence floor for fewer no-horizon FP | 96.7 % | **57.5 %** | 9.2 ms | 21.5 ms | ✓ PASS | Done, scored — best FPV |
-| 9 — `attempts/attempt-9-likelihood-dp-boundary/` | Attempt 8 plus gated 96x72 top/bottom colour-likelihood dynamic-programming boundary candidate | **97.1 %** | **57.5 %** | 14.3 ms | 27.3 ms | ✓ PASS | Done, scored — best combined |
+| 9 — `attempts/attempt-9-likelihood-dp-boundary/` | Attempt 8 plus gated 96x72 top/bottom colour-likelihood dynamic-programming boundary candidate | 97.1 % | 57.5 % | 14.3 ms | 27.3 ms | ✓ PASS | Done, scored |
+| 10 — `attempts/attempt-10-top-connected-sky/` | Attempt 9 plus gated 96x72 top-connected sky-envelope candidate using colour likelihood + texture | **97.3 %** | **60.0 %** | 17.9 ms | 30.3 ms | ✓ PASS | Done, scored — best combined |
 
 Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1`. Speed gate: mean AND p90 latency ≤ 67 ms. Run via `tools/bench_docker.sh`.
 
-Attempt 9 is the current best default when both datasets matter: best Horizon-UAV pass rate (476 / 490) while tying attempt 8 on FPV/ATV (69 / 120). Attempt 8 remains the simpler best-FPV baseline.
+Attempt 10 is the current best default when both datasets matter: best Horizon-UAV pass rate (477 / 490) and best FPV/ATV pass rate (72 / 120), while preserving attempt 8/9's no-horizon confusion matrix (TP/FN/FP/TN = 100/10/2/8). Attempt 8 remains the simpler best-FPV baseline.
 
 ## Known failure modes & root causes
 
@@ -63,7 +64,7 @@ All remaining hard failures after attempt 2 are **classifier failures**, not fit
 | Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3, 4 (partially fixed in 7 by Lab b\* fallback) |
 | Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3, 4 (partially fixed in 7 by Ettinger rerank) |
 | Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially), 3, 4 (partially fixed in 7) |
-| FPV treeline / canopy | Ground-level FPV through dense trees: real horizon is partially clipped by canopy; the strongest color-coherent split lands along a treetop | All. Worst remaining failure mode in attempts 7–9 — Δθ up to 38° on `04_10m34s-11m00s_fpv_treeline_*` frames |
+| FPV treeline / canopy | Ground-level FPV through dense trees: real horizon is partially clipped by canopy; the strongest color-coherent split lands along a treetop | All. Worst remaining failure mode in attempts 7–10 — Δθ up to 38° on `04_10m34s-11m00s_fpv_treeline_*` frames |
 | No-horizon false positive | Sky-only / ground-only frames not quite degenerate enough to trip the abstention threshold; just enough texture coherence to clear the floor | 1–6 fit a line on every frame; attempt 7 abstains on 6 of 10; attempt 8 abstains on 8 of 10 but increases horizon FN |
 
 Rotation failures from attempt 1 (column-scan assumption) were resolved in attempt 2.
@@ -72,7 +73,7 @@ Rotation failures from attempt 1 (column-scan assumption) were resolved in attem
 
 1. **Better treeline behaviour** — currently the worst failure mass on FPV. Options: detect "canopy clipping" via row-wise variance profile and abstain; or fit two-line model (canopy line + horizon line) and pick the upper.
 2. **Reduce attempt-8 false negatives** — the higher `_FALLBACK_COHERENCE` improves no-horizon TN but increases FPV horizon FN from 5 to 10. A richer abstention model could separate true no-horizon frames from weak-horizon frames better than one scalar floor.
-3. **Avoid ungated dense boundary candidates** — attempt 9's first DP variant regressed until gated by high Ettinger coherence and roll; naive Hough in attempt 8 also regressed because roads/overlays/tree edges dominated.
+3. **Avoid ungated dense boundary candidates** — attempt 9's first DP variant regressed until gated by high Ettinger coherence and roll; attempt 10's first sky-envelope gate also regressed on treeline until tightened; naive Hough in attempt 8 also regressed because roads/overlays/tree edges dominated.
 4. **Real Raspberry Pi 5 benchmark** — the Docker model gates the speed budget honestly enough for development, but a real-Pi run is still required before declaring the requirement met.
 
 Background research on all of these methods (literature references, dataset survey, test-design notes): [`docs/research-horizon-detection.md`](docs/research-horizon-detection.md).
@@ -114,7 +115,11 @@ hack-horizon/
 │   │   ├── horizon_detect.py
 │   │   ├── requirements.txt
 │   │   └── result.md
-│   └── attempt-9-likelihood-dp-boundary/
+│   ├── attempt-9-likelihood-dp-boundary/
+│   │   ├── horizon_detect.py
+│   │   ├── requirements.txt
+│   │   └── result.md
+│   └── attempt-10-top-connected-sky/
 │       ├── horizon_detect.py
 │       ├── requirements.txt
 │       └── result.md
