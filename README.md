@@ -187,15 +187,14 @@ The premise of this repo — find the horizon and treat above-the-line pixels as
 
 **1. Frames with no horizon.** Sky-only or ground-only frames (close-up shots, looking straight up or straight down, low-altitude footage where the camera sees only ground) have no horizon line to fit. The schema treats this as a first-class label (`has_horizon=false`) and the evaluator scores classification correctness via a confusion matrix, but a *downstream consumer* still has to decide what to do on these frames — pass through the full image, fall back to a different mask, or skip detection entirely. That decision belongs to the system using horizon detection, not the detector itself.
 
-**2. Targets above the horizon.** When the drone is flying low and the target (another aircraft, an incoming UAV, anything in the sky) is high relative to the ground plane, the target sits *above* the horizon line. A naive "crop everything above the horizon as noise" strategy would erase the target at the worst possible moment — close approach, terminal phase — exactly when the downstream detector most needs every pixel of signal. Sky pixels are usually cheap to discard, but they can contain the very thing the detector exists to find.
+**2. Ground targets that protrude above the horizon.** The downstream detector this pipeline feeds is meant to find *ground* targets — people, vehicles. Most of the time those targets sit comfortably below the horizon line. But at low altitude on close approach, the drone's eye-line can drop below the top of the target itself: a standing person's head, a vehicle's cab, a building's upper half. Those pixels are part of the target but lie *above* the horizon line in the image. A naive "crop everything above the horizon as noise" strategy would slice the target at the horizon, discarding its upper portion at the worst possible moment — terminal phase, when the target dominates the frame and the detector most needs every pixel of signal.
 
 Neither of these is a bug in `detect_horizon`. They are consequences of using *horizon = sky/ground boundary* as a shortcut for *horizon = useful/useless boundary*. A production pipeline that takes horizon output seriously should either:
 
-- treat the sky mask as a soft hint, not a hard crop,
-- keep a configurable buffer above the horizon when cropping (so low-flying targets aren't truncated),
-- or run a parallel detection branch on the sky region whenever horizon-based filtering is active, and fuse results.
+- treat the sky mask as a soft hint (e.g. a per-pixel weight in the downstream loss), not a hard crop,
+- or keep a configurable buffer above the horizon when cropping, sized for the tallest expected target at the closest expected range — a 1.5m drone closing on a 1.8m person needs the buffer; a 100m-altitude reconnaissance pass does not.
 
-The current attempts in this repo do not do any of these — they output a horizon line and a sky mask, full stop. Folding the above into the pipeline is a system-design problem layered on top of the detector, not a detector problem.
+The current attempts in this repo do not do either — they output a horizon line and a sky mask, full stop. Folding the above into the pipeline is a system-design problem layered on top of the detector, not a detector problem.
 
 ## Data Notes
 
