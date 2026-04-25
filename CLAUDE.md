@@ -102,6 +102,6 @@ hack-horizon/
 ## Conventions
 
 - **Each attempt** lives in its own `attempts/attempt-N-<name>/` directory with a `horizon_detect.py` exposing a `detect_horizon(image_bgr) -> list[dict]` API and a `result.md` documenting method, scores, and failure analysis.
-- **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image Horizon-UAV dataset before an attempt is considered done; use `--dataset data/video_clips_ukraine_atv` for the secondary labelled set. Outputs are `full-eval-results-<dataset_dir_name>.json` per run.
+- **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image Horizon-UAV dataset before an attempt is considered done; use `--dataset data/video_clips_fpv_atv` for the secondary labelled set. Outputs are `full-eval-results-<dataset_dir_name>.json` per run.
 - **Line representation internally:** `(vx, vy, x0, y0)` from `cv2.fitLine` — valid at all orientations. Convert to `(angle_deg, intercept_y)` for human output; convert to Hesse `(θ, ρ)` for metric computation.
 - **Python environment:** `.venv/` at repo root.

@@ -48,8 +48,8 @@ machine-readable source of truth for the run that produced the table below.
 
 **Pass rate:** `468 / 490 = 95.5%`
 
-On the **Ukraine ATV** set (`--dataset data/video_clips_ukraine_atv`), see
-`full-eval-results-video_clips_ukraine_atv.json` — pass rate and mean errors
+On the **FPV/ATV clip** set (`--dataset data/video_clips_fpv_atv`), see
+`full-eval-results-video_clips_fpv_atv.json` — pass rate and mean errors
 differ from Horizon-UAV because the brightness mask and no-horizon labels hit
 harder; attempt 3 can still lead on line accuracy in some runs (stochastic
 RANSAC).

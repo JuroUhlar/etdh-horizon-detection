@@ -28,7 +28,7 @@ All numbers below are from:
 
 ```bash
 .venv/bin/python tools/evaluate.py <attempt-dir>                                    # default: Horizon-UAV
-.venv/bin/python tools/evaluate.py <attempt-dir> --dataset data/video_clips_ukraine_atv
+.venv/bin/python tools/evaluate.py <attempt-dir> --dataset data/video_clips_fpv_atv
 .venv/bin/python tools/evaluate.py <attempt-dir> --seed 0                          # pin stochastic detectors
 ```
 
@@ -50,7 +50,7 @@ The two datasets stress very different things, so we report them side by side ra
 
 Attempt 3 (and, to a lesser extent, 4) is stochastic. If you run the commands above without `--seed`, metrics can wobble slightly; pass `--seed 0` to pin a reproducible result when you need to match a table exactly.
 
-### Ukraine ATV FPV (`120` labelled frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon)
+### FPV/ATV clips (`120` labelled frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon)
 
 | Metric | Attempt 1 | Attempt 2 | Attempt 3 | Attempt 4 |
 |---|---:|---:|---:|---:|
@@ -99,22 +99,22 @@ Attempt 3 shows that the strongest remaining gains came from a better search ove
 - Mean angle error and mean `Δρ` stay in the same ballpark.
 - Mean latency drops from `71.5 ms` to `18.0 ms` by vectorising the RANSAC scoring loop, subsampling boundary points, and running fewer iterations.
 
-Interpretation: attempt 4 is the practical deployment variant of the same line-search idea when CPU time matters. On the Ukraine ATV set, it is faster but does not always beat attempt 3 on every line metric (RANSAC randomness and slightly different per-frame work).
+Interpretation: attempt 4 is the practical deployment variant of the same line-search idea when CPU time matters. On the FPV/ATV set, it is faster but does not always beat attempt 3 on every line metric (RANSAC randomness and slightly different per-frame work).
 
-## What Changed On Ukraine ATV After Cropping
+## What Changed On FPV/ATV After Cropping
 
 The original ATV result was dominated by the dataset itself: large black side bars created strong artificial edges and pulled the detectors, especially the RANSAC pipeline, toward the frame border instead of the horizon. Rewriting the ATV frames to remove those bars changes the story completely.
 
 All four attempts share the same first stage: an Otsu-style brightness threshold that splits the frame into "bright = sky" and "dark = ground", followed by a boundary-extraction step and a line fit. They differ only in how they extract the boundary and how they fit the line.
 
-On Horizon-UAV that mask is mostly correct, because the upstream dataset is dominated by clear-sky aerial scenes where sky really is brighter than ground. On Ukraine ATV FPV footage that assumption still breaks in many frames: treeline shots, road approaches, and ground-POV footage often have no clean brightness split. But after cropping the side bars, the boundary set is no longer polluted by a pair of huge vertical frame edges.
+On Horizon-UAV that mask is mostly correct, because the upstream dataset is dominated by clear-sky aerial scenes where sky really is brighter than ground. On the FPV/ATV clip footage that assumption still breaks in many frames: treeline shots, road approaches, and ground-POV footage often have no clean brightness split. But after cropping the side bars, the boundary set is no longer polluted by a pair of huge vertical frame edges.
 
 Once that first stage is wrong, each downstream choice amplifies the error differently:
 
 - **Attempt 1** benefits immediately. Once the frame-border artefacts are gone, its simplistic column scan is much less likely to fit the border, so pass rate rises from `3.3%` to `16.7%`.
 - **Attempt 2** does not benefit as much. It remains heavily constrained by the quality of the Otsu mask itself, so it is still often fitting the wrong boundary even though the most obvious artificial edges are gone.
 - **Attempt 3** benefits the most in accuracy. Its aggressive search is no longer being handed an easy, dominant vertical border line, so it can often lock onto the real horizon. That is why pass rate jumps from `0.0%` to `45.0%` and mean `Δθ` on TP frames is far lower than on the uncropped dataset.
-- **Attempt 4** is much faster on ATV than attempt 3, but line error on that set can be higher on average than attempt 3 in a given run; check `full-eval-results-video_clips_ukraine_atv.json` when comparing.
+- **Attempt 4** is much faster on ATV than attempt 3, but line error on that set can be higher on average than attempt 3 in a given run; check `full-eval-results-video_clips_fpv_atv.json` when comparing.
 
 In short: the more aggressive line search was not intrinsically wrong on ATV; it was being poisoned by bad input geometry. Once the dataset is cleaned up, RANSAC becomes useful again. The remaining failure mode is the brightness mask itself, plus the missing no-horizon path.
 

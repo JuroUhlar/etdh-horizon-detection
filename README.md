@@ -7,7 +7,7 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 - four classical computer-vision attempts under `attempts/`
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
-- a Ukraine ATV FPV clip set under `data/video_clips_ukraine_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
+- an FPV/ATV clip set under `data/video_clips_fpv_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
 - an evaluator in `tools/evaluate.py`
 - visual rendering utilities in `tools/render_outputs.py` and `tools/stitch_video.py`
 - an interactive annotator in `tools/annotate_horizon.py` for labelling new frame sets in the same `label.csv` schema
@@ -22,7 +22,7 @@ The four attempts tell a clear story on the original Horizon-UAV benchmark:
 - `attempt-3-top-n-ransac`: best line accuracy, much slower
 - `attempt-4-top-n-ransac_tuned`: same accuracy as 3 on Horizon-UAV with much lower latency (vectorised RANSAC + subsampling)
 
-…and the story changes on the Ukraine ATV FPV dataset after cropping out the large side bars and resizing frames to a UAV-like scale. The two datasets still exercise different things, so we report them side by side.
+…and the story changes on the FPV/ATV clip set after cropping out the large side bars and resizing frames to a UAV-like scale. The two datasets still exercise different things, so we report them side by side.
 
 **Horizon-UAV** (490 images, 480×480, every frame has a horizon):
 
@@ -33,7 +33,7 @@ The four attempts tell a clear story on the original Horizon-UAV benchmark:
 | Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms |
 | Attempt 4 | 95.5% | 1.078° | 10.625 px | 18.006 ms |
 
-**Ukraine ATV FPV** (120 frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon):
+**FPV/ATV clips** (120 frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon):
 
 | Attempt | Pass rate | Mean Δθ (TP only) | Mean Δρ | Mean latency | Confusion (TP/FN/FP/TN) |
 |---|---:|---:|---:|---:|---:|
@@ -68,7 +68,7 @@ Evaluate an attempt on the full dataset:
 .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac
 ```
 
-That also writes `attempts/<attempt>/full-eval-results-<dataset_dir_name>.json` (e.g. `full-eval-results-horizon_uav_dataset.json`) with the aggregate metrics and per-frame results.
+That also writes `attempts/<attempt>/full-eval-results-<dataset_dir_name>.json` (e.g. `full-eval-results-horizon_uav_dataset.json`) with run metadata and aggregate metrics (no per-frame dump).
 
 Use `--limit` for quick iteration:
 
@@ -99,7 +99,7 @@ The default preview pacing is `0.5s` per frame (`2 fps`). Override it with `--fr
 
 `tools/annotate_horizon.py` is a small OpenCV GUI for hand-labelling horizon lines on a folder of images. It writes a 4-column `label.csv` (`filename,has_horizon,slope,offset`), and `tools/evaluate.py` reads both that schema and the upstream 3-column Horizon-UAV schema without any conversion step.
 
-Run it against the default dataset (`data/video_clips_ukraine_atv/`):
+Run it against the default dataset (`data/video_clips_fpv_atv/`):
 
 ```bash
 .venv/bin/python tools/annotate_horizon.py
@@ -159,7 +159,7 @@ attempts/
 data/
   horizon_uav_dataset/         # 490 labelled images + masks + label.csv
   samples/                     # 4 manual stress-test images, especially rotation edge cases
-  video_clips_ukraine_atv/     # FPV clips + 120 extracted frames; label.csv built with annotate_horizon.py
+  video_clips_fpv_atv/         # FPV clips + 120 extracted frames; label.csv built with annotate_horizon.py
 docs/
   evaluation-metrics.md
   research-horizon-detection.md
@@ -188,7 +188,7 @@ Accepted return shapes are:
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
 - `[{"line": ...}, ...]` for top-N detectors; the evaluator scores the first candidate
 
-This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the four current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
+This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the four current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the FPV/ATV clip set.
 
 ## Metrics
 
@@ -223,7 +223,7 @@ The current attempts in this repo do not do either — they output a horizon lin
 
 - `data/horizon_uav_dataset/` is the main benchmark and includes images, land/sky masks, and `label.csv`.
 - `data/samples/` is a tiny manual stress set for rotated or near-vertical cases that the main dataset does not cover well.
-- `data/video_clips_ukraine_atv/` holds short FPV clips (`clips/`) plus 120 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow a superset of the main benchmark schema.
+- `data/video_clips_fpv_atv/` holds short FPV clips (`clips/`) plus 120 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow a superset of the main benchmark schema.
 - The dataset mirror has its own README at [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md).
 
 ## If You Add Another Attempt

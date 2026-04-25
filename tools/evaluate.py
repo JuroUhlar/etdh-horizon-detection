@@ -4,13 +4,13 @@ tools/evaluate.py — run an attempt's detector over a horizon dataset.
 Usage:
     .venv/bin/python tools/evaluate.py attempts/attempt-1-otsu-column-scan
     .venv/bin/python tools/evaluate.py attempts/attempt-2-rotation-invariant --limit 50
-    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_ukraine_atv
+    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_fpv_atv
     .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --seed 0
 
 Reports per-sample angular error, positional error (Hesse rho), and sky-mask IoU,
 plus aggregates, a pass rate, and the worst offenders.
 
-Datasets may include a has_horizon column (data/video_clips_ukraine_atv) or omit
+Datasets may include a has_horizon column (e.g. data/video_clips_fpv_atv) or omit
 it (data/horizon_uav_dataset, where every frame has a horizon). When present, the
 report adds a confusion matrix and pass-rate folds in the no-horizon agreement.
 
@@ -20,6 +20,8 @@ for why we compare lines in Hesse normal form rather than via (slope, y-intercep
 Writes one JSON file per (attempt, dataset) so runs do not overwrite:
   attempts/<attempt>/full-eval-results-<dataset_dir_name>.json
 for example `full-eval-results-horizon_uav_dataset.json`.
+The file has run metadata and a `summary` object (aggregates, confusion matrix, worst-5
+filenames) — it does not list every frame.
 """
 
 import argparse
@@ -380,21 +382,6 @@ def write_full_eval_results(
         "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "wall_clock_s": wall_clock_s,
         "summary": summarise_results(results),
-        "samples": [
-            {
-                "filename": r.filename,
-                "gt_has_horizon": r.gt_has_horizon,
-                "pred_has_horizon": r.pred_has_horizon,
-                "delta_theta_deg": r.delta_theta_deg,
-                "delta_rho_px": r.delta_rho_px,
-                "delta_rho_norm": r.delta_rho_norm,
-                "iou": r.iou,
-                "latency_ms": r.latency_ms,
-                "failed": r.failed,
-                "passes": False if r.failed else _passes_sample(r),
-            }
-            for r in results
-        ],
     }
     out_path.write_text(json.dumps(payload, indent=2) + "\n")
     print(f"  wrote {out_path}")
