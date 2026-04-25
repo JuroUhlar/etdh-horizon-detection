@@ -181,6 +181,22 @@ The evaluator scores line accuracy in Hesse normal form, not raw slope/intercept
 
 Details are in [docs/evaluation-metrics.md](./docs/evaluation-metrics.md).
 
+## Limitations of horizon-based sky removal
+
+The premise of this repo — find the horizon and treat above-the-line pixels as sky to be discarded — has two failure modes no improvement to `detect_horizon` itself can fix.
+
+**1. Frames with no horizon.** Sky-only or ground-only frames (close-up shots, looking straight up or straight down, low-altitude footage where the camera sees only ground) have no horizon line to fit. The schema treats this as a first-class label (`has_horizon=false`) and the evaluator scores classification correctness via a confusion matrix, but a *downstream consumer* still has to decide what to do on these frames — pass through the full image, fall back to a different mask, or skip detection entirely. That decision belongs to the system using horizon detection, not the detector itself.
+
+**2. Targets above the horizon.** When the drone is flying low and the target (another aircraft, an incoming UAV, anything in the sky) is high relative to the ground plane, the target sits *above* the horizon line. A naive "crop everything above the horizon as noise" strategy would erase the target at the worst possible moment — close approach, terminal phase — exactly when the downstream detector most needs every pixel of signal. Sky pixels are usually cheap to discard, but they can contain the very thing the detector exists to find.
+
+Neither of these is a bug in `detect_horizon`. They are consequences of using *horizon = sky/ground boundary* as a shortcut for *horizon = useful/useless boundary*. A production pipeline that takes horizon output seriously should either:
+
+- treat the sky mask as a soft hint, not a hard crop,
+- keep a configurable buffer above the horizon when cropping (so low-flying targets aren't truncated),
+- or run a parallel detection branch on the sky region whenever horizon-based filtering is active, and fuse results.
+
+The current attempts in this repo do not do any of these — they output a horizon line and a sky mask, full stop. Folding the above into the pipeline is a system-design problem layered on top of the detector, not a detector problem.
+
 ## Data Notes
 
 - `data/horizon_uav_dataset/` is the main benchmark and includes images, land/sky masks, and `label.csv`.
