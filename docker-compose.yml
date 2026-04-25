@@ -1,0 +1,29 @@
+services:
+  horizon:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    # -----------------------------------------------------------------------
+    # Resource limits — approximating Raspberry Pi 5 (4 GB variant) with a
+    # documented reserve for Hailo driver overhead.
+    #
+    #   Physical Pi 5:  4 cores,  4 096 MB RAM
+    #   Hailo reserve: ~1 core,    ~512 MB  (driver + inference orchestration)
+    #   Container gets: 3 cores,  3 584 MB
+    #
+    # Override via .env (see .env.example) or by setting env vars before running.
+    # -----------------------------------------------------------------------
+    # Raspberry Pi 5 (4 GB) minus ~1 core / ~512 MB Hailo driver overhead.
+    # See docs/evaluation-environment.md for rationale.
+    cpus: "3"
+    mem_limit: "3584m"
+    memswap_limit: "3584m"   # disable swap to match bare-metal
+
+    volumes:
+      # Repo source — bind-mounted so edits on the host are reflected immediately
+      - .:/workspace
+    working_dir: /workspace
+
+    # No fixed entrypoint — run any script directly:
+    #   docker compose run --rm horizon python tools/evaluate.py attempts/attempt-2-rotation-invariant
+    #   docker compose run --rm horizon python attempts/attempt-3-top-n-ransac/horizon_detect.py data/...

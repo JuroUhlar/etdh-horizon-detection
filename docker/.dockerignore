@@ -1,0 +1,20 @@
+# Version control
+.git/
+
+# Python virtual environment — dependencies are installed inside the image
+.venv/
+
+# Attempt output images — large, not needed inside container
+attempts/*/outputs/
+attempts/*/results/
+
+# Dataset images and masks — bind-mounted at runtime, never baked in
+data/horizon_uav_dataset/images/
+data/horizon_uav_dataset/masks/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+*.pyo
