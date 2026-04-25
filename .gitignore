@@ -17,3 +17,8 @@ __pycache__/
 
 outputs/
 attempts/*/outputs/
+
+# Raw video downloads + intermediate contact sheets (the cut clips under clips/ are kept)
+data/video_clips_*/source.*
+data/video_clips_*/sheet_*.jpg
+data/video_clips_*/frames/
