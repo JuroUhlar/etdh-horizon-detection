@@ -27,10 +27,14 @@ at roughly **1 core + 512 MB RAM** of continuous overhead. Rather than simulate 
 dummy Hailo process inside the container, we simply **reduce the container's visible
 budget** by that amount and document the assumption. This means:
 
-| Resource | RPi 5 (4 GB) physical | Hailo driver reserve | Container limit |
-|---|---|---|---|
-| CPU cores | 4 | ~1 core | **3 cores** |
-| RAM | 4 096 MB | ~512 MB (driver + OS) | **3 584 MB (~3.5 GB)** |
+| Resource | RPi 5 (4 GB) physical | Hailo driver reserve | Available pool | Container limit |
+|---|---|---|---|---|
+| CPU cores | 4 | ~1 core | 3 cores | **1 core** |
+| RAM | 4 096 MB | ~512 MB (driver + OS) | ~3 584 MB | **3 584 MB (~3.5 GB)** |
+
+The RAM limit mirrors the full remaining pool — 3.5 GB is far more than the algorithm needs (~MB range for 480×480 frames), so the container will never be OOM-limited in a way the Pi wouldn't also hit.
+
+The CPU limit is deliberately set to **1 core**, not 3, for a second reason: the horizon detector runs in a single Python thread per frame, so the other two available cores only help if OpenCV parallelises internally (which `OMP_NUM_THREADS=1` suppresses). Setting `cpus: "1"` and all thread-count env vars to 1 forces fully serial execution, matching the worst-case single-core timing. On a Pi the detector *could* use those extra cores via BLAS/OMP threading — keeping them available would be more realistic, but it would make the container faster than the serial case, not slower. Choosing the stricter model means a passing container result is a stronger gate, not a weaker one.
 
 If the horizon detector comfortably hits ≥15 FPS inside these limits it will have
 sufficient headroom on the real device. If it just barely passes, treat that as a

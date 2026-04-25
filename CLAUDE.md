@@ -71,7 +71,7 @@ Known reference implementations: [`docs/inspiration-implementations.md`](docs/in
 
 ## Evaluation environment
 
-Timing is validated inside a Docker container that approximates the Raspberry Pi 5 resource budget (3 CPU cores, 3.5 GB RAM) on any developer machine. See [`docs/evaluation-environment.md`](docs/evaluation-environment.md) for the full design rationale, what is and isn't simulated, and open items before the Dockerfile is written.
+Timing is validated inside a Docker container that approximates the Raspberry Pi 5 resource budget (1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1`) on any developer machine. See [`docs/evaluation-environment.md`](docs/evaluation-environment.md) for the full design rationale, what is and isn't simulated, and open items before the Dockerfile is written.
 
 ## Repo layout
 
