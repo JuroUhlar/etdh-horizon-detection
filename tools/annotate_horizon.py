@@ -3,10 +3,13 @@ tools/annotate_horizon.py — interactive horizon-line annotator.
 
 Click two points on the horizon in each image; the tool fits the line
 y = slope*x + c in original-image pixel space and writes the result to
-label.csv with the same schema as data/horizon_uav_dataset/label.csv:
+label.csv. Schema (a superset of data/horizon_uav_dataset/label.csv,
+which is missing the has_horizon column — old 3-column CSVs are read
+back as has_horizon=true and rewritten in the 4-column form on save):
 
-    filename,slope,offset
-    <name>.jpg,<dy/dx in px>,<c / image_height>
+    filename,has_horizon,slope,offset
+    foo.jpg,true,<dy/dx in px>,<c / image_height>
+    bar.jpg,false,,                              # all-sky or all-ground frame
 
 Usage:
     .venv/bin/python tools/annotate_horizon.py
@@ -17,6 +20,7 @@ Usage:
 Keys:
     left-click x2  define horizon (first point, second point)
     n / Enter      save current label and advance
+    x              mark image as NO HORIZON (sky-only or ground-only) and advance
     u              undo last click
     r              reset both points
     b              go back to previous image (does not erase its label)
@@ -39,26 +43,43 @@ MAX_DISPLAY_W = 1600
 MAX_DISPLAY_H = 900
 
 
-def load_existing_labels(csv_path: Path) -> dict[str, tuple[float, float]]:
+def load_existing_labels(csv_path: Path) -> dict[str, dict]:
+    """Read label.csv into {filename: {"has_horizon", "slope", "offset"}}.
+
+    Backward-compatible with the 3-column schema (filename,slope,offset):
+    rows lacking a has_horizon column are loaded as has_horizon=true.
+    """
     if not csv_path.exists():
         return {}
-    out: dict[str, tuple[float, float]] = {}
+    out: dict[str, dict] = {}
     with csv_path.open() as f:
         reader = csv.DictReader(f)
+        has_col = "has_horizon" in (reader.fieldnames or [])
         for row in reader:
-            out[row["filename"]] = (float(row["slope"]), float(row["offset"]))
+            hh = (row["has_horizon"].strip().lower() == "true") if has_col else True
+            if hh:
+                out[row["filename"]] = {
+                    "has_horizon": True,
+                    "slope": float(row["slope"]),
+                    "offset": float(row["offset"]),
+                }
+            else:
+                out[row["filename"]] = {"has_horizon": False, "slope": None, "offset": None}
     return out
 
 
-def write_labels(csv_path: Path, labels: dict[str, tuple[float, float]]) -> None:
+def write_labels(csv_path: Path, labels: dict[str, dict]) -> None:
     # Stable order: by filename, matching how the reference dataset is laid out.
     rows = sorted(labels.items(), key=lambda kv: kv[0])
     tmp = csv_path.with_suffix(csv_path.suffix + ".tmp")
     with tmp.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["filename", "slope", "offset"])
-        for name, (slope, offset) in rows:
-            writer.writerow([name, repr(slope), repr(offset)])
+        writer.writerow(["filename", "has_horizon", "slope", "offset"])
+        for name, lbl in rows:
+            if lbl["has_horizon"]:
+                writer.writerow([name, "true", repr(lbl["slope"]), repr(lbl["offset"])])
+            else:
+                writer.writerow([name, "false", "", ""])
     tmp.replace(csv_path)  # atomic-ish; protects against crashes mid-write.
 
 
@@ -246,9 +267,12 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
                         else "vertical line — not representable, click different x"
                     )
                 elif prior is not None and not state["points_disp"]:
-                    sub = f"prior: slope={prior[0]:+.4f}  offset={prior[1]:+.4f}  (click to overwrite)"
+                    if prior["has_horizon"]:
+                        sub = f"prior: slope={prior['slope']:+.4f}  offset={prior['offset']:+.4f}  (click to overwrite)"
+                    else:
+                        sub = "prior: NO HORIZON  (click to overwrite, or x to keep)"
                 else:
-                    sub = "left-click two points on the horizon  |  n=save  u=undo  r=reset  b=back  s=skip  q=quit"
+                    sub = "click 2 pts  |  n=save  x=no-horizon  u=undo  r=reset  b=back  s=skip  q=quit"
 
                 header = f"[{cursor + 1}/{len(queue_indices)}]  idx={idx}  {path.name}  ({w_full}x{h_full})"
 
@@ -256,15 +280,23 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
                 draw_pts = list(state["points_disp"])
                 canvas = render_overlay(disp_base, draw_pts, state["hover_disp"], header, sub)
                 if prior is not None and not state["points_disp"]:
-                    slope_p, offset_p = prior
-                    c_px = offset_p * h_full
-                    p1_full = (0.0, c_px)
-                    p2_full = (float(w_full - 1), slope_p * (w_full - 1) + c_px)
-                    p1_disp = (int(round(p1_full[0] * scale)), int(round(p1_full[1] * scale)))
-                    p2_disp = (int(round(p2_full[0] * scale)), int(round(p2_full[1] * scale)))
-                    ends = line_endpoints_at_image_edges(p1_disp, p2_disp, canvas.shape[1], canvas.shape[0])
-                    if ends is not None:
-                        cv2.line(canvas, ends[0], ends[1], (255, 0, 255), 1, cv2.LINE_AA)
+                    if prior["has_horizon"]:
+                        slope_p, offset_p = prior["slope"], prior["offset"]
+                        c_px = offset_p * h_full
+                        p1_full = (0.0, c_px)
+                        p2_full = (float(w_full - 1), slope_p * (w_full - 1) + c_px)
+                        p1_disp = (int(round(p1_full[0] * scale)), int(round(p1_full[1] * scale)))
+                        p2_disp = (int(round(p2_full[0] * scale)), int(round(p2_full[1] * scale)))
+                        ends = line_endpoints_at_image_edges(p1_disp, p2_disp, canvas.shape[1], canvas.shape[0])
+                        if ends is not None:
+                            cv2.line(canvas, ends[0], ends[1], (255, 0, 255), 1, cv2.LINE_AA)
+                    else:
+                        # Big banner so you can't miss that this image is currently labelled no-horizon.
+                        ch, cw = canvas.shape[:2]
+                        cv2.putText(
+                            canvas, "NO HORIZON", (cw // 2 - 180, ch // 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.6, (255, 0, 255), 4, cv2.LINE_AA,
+                        )
 
                 cv2.imshow(WINDOW_NAME, canvas)
                 state["needs_redraw"] = False
@@ -304,16 +336,23 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
                 cursor += 1
                 break
 
+            if key == ord("x"):
+                labels[path.name] = {"has_horizon": False, "slope": None, "offset": None}
+                write_labels(csv_path, labels)
+                print(f"  [{cursor + 1}/{len(queue_indices)}] {path.name}  NO HORIZON")
+                cursor += 1
+                break
+
             if key in (ord("n"), 13, 10):  # n, Enter (LF or CR)
                 if len(state["points_full"]) != 2:
-                    print("  need exactly two clicks before saving")
+                    print("  need two clicks before saving (or press x for no-horizon)")
                     continue
                 res = compute_slope_offset(state["points_full"][0], state["points_full"][1], h_full)
                 if res is None:
                     print("  vertical line — pick two points with different x")
                     continue
                 slope, offset = res
-                labels[path.name] = (slope, offset)
+                labels[path.name] = {"has_horizon": True, "slope": slope, "offset": offset}
                 write_labels(csv_path, labels)
                 print(f"  [{cursor + 1}/{len(queue_indices)}] {path.name}  slope={slope:+.4f}  offset={offset:+.4f}")
                 cursor += 1

@@ -57,6 +57,27 @@ For *human-readable output* we still print angle and y-intercept (hackathon styl
 
 For *aggregated scoring* we always use `(θ, ρ)` errors and optional IoU.
 
+## No-horizon frames
+
+Some frames in `data/video_clips_ukraine_atv/` contain only sky or only ground — there is no horizon line to fit. These frames are labelled `has_horizon=false` (with empty `slope`/`offset`) in `label.csv`. The detector contract accordingly accepts a deliberate "no horizon" output, distinct from a failure return:
+
+- `None` — detector failed / gave up. Counted as `failed` in reporting.
+- `"no_horizon"` or `{"no_horizon": True, ...}` — detector decided the frame has no horizon.
+- a line (existing shapes) — detector decided the frame has a horizon.
+
+This produces a 2×2 confusion matrix over `has_horizon`:
+
+| | pred=horizon | pred=no_horizon |
+|---|---|---|
+| **gt=horizon** | TP — score line errors as usual | FN — line errors n/a |
+| **gt=no_horizon** | FP — line errors n/a | TN — no line to score |
+
+Line-level metrics (`Δθ`, `Δρ`, `Δρ/H`) are aggregated only over TP rows, since they are undefined when either side is "no horizon". IoU is still computed whenever both predicted and ground-truth masks are available, regardless of `has_horizon` — a fully-sky frame has a meaningful all-white sky mask.
+
+The pass rate compounds: a frame passes iff `gt_has_horizon == pred_has_horizon` AND, when both sides are horizons, line errors are within thresholds. This means a perfect line-fitter still gets dinged for every no-horizon frame it tries to fit a line to.
+
+Datasets that don't include `has_horizon` (e.g. `data/horizon_uav_dataset/label.csv`, which is a byte-identical upstream mirror) are loaded as if every row were `has_horizon=true`. The confusion matrix is then trivial and is suppressed in the report.
+
 ## Aggregate statistics
 
 Per-sample errors are aggregated into:
@@ -65,7 +86,7 @@ Per-sample errors are aggregated into:
 - **P50 / P90 / max angular error** — tail behaviour matters for UAVs; a 99%-of-the-time-correct detector can still crash.
 - **Mean positional error** (pixels, normalised by image height for cross-resolution comparison).
 - **Mean IoU** when masks are available.
-- **Pass rate** — percentage of frames within a tolerance (e.g. `|Δθ| < 5°` *and* `|Δρ|/H < 5%`).
+- **Pass rate** — percentage of frames within a tolerance (e.g. `|Δθ| < 5°` *and* `|Δρ|/H < 5%`); on datasets with `has_horizon` labels, also requires correct horizon/no-horizon classification.
 
 ## Why not just use IoU?
 

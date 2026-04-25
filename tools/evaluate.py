@@ -1,12 +1,17 @@
 """
-tools/evaluate.py — run an attempt's detector over the Horizon-UAV dataset.
+tools/evaluate.py — run an attempt's detector over a horizon dataset.
 
 Usage:
     .venv/bin/python tools/evaluate.py attempts/attempt-1-otsu-column-scan
     .venv/bin/python tools/evaluate.py attempts/attempt-2-rotation-invariant --limit 50
+    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_ukraine_atv
 
 Reports per-sample angular error, positional error (Hesse ρ), and sky-mask IoU,
 plus aggregates (mean / P50 / P90 / max), a pass rate, and the worst offenders.
+
+Datasets may include a has_horizon column (data/video_clips_ukraine_atv) or omit
+it (data/horizon_uav_dataset, where every frame has a horizon). When present, the
+report adds a confusion matrix and pass-rate folds in the no-horizon agreement.
 
 The evaluator is metric-definition-heavy on purpose: see docs/evaluation-metrics.md
 for why we compare lines in Hesse normal form rather than via (slope, y-intercept).
@@ -54,21 +59,34 @@ def load_detector(attempt_dir: Path):
 
 
 def normalise_output(raw):
-    """Convert any attempt's return shape into ((vx, vy, x0, y0), mask_or_None).
+    """Convert any attempt's return shape into (line, mask, no_horizon).
+
+    Returns:
+      line: (vx, vy, x0, y0) tuple, or None when there is no horizon line to compare.
+      mask: optional sky mask (numpy array), or None.
+      no_horizon: True if the detector deliberately reported "no horizon present".
+                  False if the detector returned a line OR returned None (failure).
+                  This distinguishes "I correctly abstained" from "I crashed/gave up".
 
     Attempts can return:
-      - None  — no horizon detected.
-      - (slope_deg, intercept_px, mask)  — attempt 1 style.
-      - dict with 'line' = (vx, vy, x0, y0) and 'mask'  — attempt 2 style.
+      - None                                — failure / detector gave up.
+      - "no_horizon" (str)                  — deliberate abstention (sky-only / ground-only).
+      - {"no_horizon": True, "mask": ...}   — same, in dict form, with optional mask.
+      - (slope_deg, intercept_px, mask)     — attempt 1 style.
+      - {"line": (vx, vy, x0, y0), ...}     — attempt 2 / 3 style.
     """
     if raw is None:
-        return None, None
+        return None, None, False
+    if isinstance(raw, str) and raw == "no_horizon":
+        return None, None, True
     if isinstance(raw, dict):
-        return raw["line"], raw.get("mask")
+        if raw.get("no_horizon"):
+            return None, raw.get("mask"), True
+        return raw["line"], raw.get("mask"), False
     if isinstance(raw, tuple) and len(raw) == 3:
         slope_deg, intercept_px, mask = raw
         theta = math.radians(slope_deg)
-        return (math.cos(theta), math.sin(theta), 0.0, intercept_px), mask
+        return (math.cos(theta), math.sin(theta), 0.0, intercept_px), mask, False
     raise ValueError(f"Unsupported detector return type: {type(raw).__name__}")
 
 
@@ -138,27 +156,44 @@ def iou_binary(pred: np.ndarray, gt: np.ndarray) -> float:
 @dataclass
 class SampleResult:
     filename: str
+    gt_has_horizon: bool
+    pred_has_horizon: bool        # False ONLY when detector deliberately said "no_horizon"
     delta_theta_deg: Optional[float]
     delta_rho_px: Optional[float]
     delta_rho_norm: Optional[float]
     iou: Optional[float]
     latency_ms: float
-    failed: bool
+    failed: bool                  # True when detector returned None (crashed / gave up)
+
+
+def _load_labels(csv_path: Path) -> list[dict]:
+    """Read label.csv tolerating both 3-col (legacy) and 4-col (with has_horizon) schemas."""
+    with csv_path.open() as f:
+        reader = csv.DictReader(f)
+        has_col = "has_horizon" in (reader.fieldnames or [])
+        rows = []
+        for row in reader:
+            hh = (row["has_horizon"].strip().lower() == "true") if has_col else True
+            rows.append({
+                "filename": row["filename"],
+                "has_horizon": hh,
+                "slope": float(row["slope"]) if hh and row.get("slope") else None,
+                "offset": float(row["offset"]) if hh and row.get("offset") else None,
+            })
+    return rows
 
 
 def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
     detect = load_detector(attempt_dir)
 
-    with (dataset_dir / "label.csv").open() as f:
-        labels = list(csv.DictReader(f))
+    labels = _load_labels(dataset_dir / "label.csv")
     if limit is not None:
         labels = labels[:limit]
 
     results: list[SampleResult] = []
     for row in labels:
         filename = row["filename"]
-        slope = float(row["slope"])
-        offset = float(row["offset"])
+        gt_hh = row["has_horizon"]
 
         img_path = dataset_dir / "images" / filename
         img = cv2.imread(str(img_path))
@@ -171,16 +206,27 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
         raw = detect(img)
         latency_ms = (time.perf_counter() - t0) * 1000
 
-        line_pred, mask_pred = normalise_output(raw)
-        if line_pred is None:
-            results.append(SampleResult(filename, None, None, None, None, latency_ms, failed=True))
+        line_pred, mask_pred, pred_no_horizon = normalise_output(raw)
+
+        # Distinguish detector failure (returned None, no decision) from deliberate
+        # no-horizon. Only the former counts as "failed" in reporting.
+        if line_pred is None and not pred_no_horizon:
+            results.append(SampleResult(
+                filename, gt_hh, True, None, None, None, None, latency_ms, failed=True,
+            ))
             continue
 
-        line_gt = line_from_slope_offset(slope, offset, H)
-        d_theta = angular_error_deg(line_pred, line_gt)
-        d_rho = positional_error_px(line_pred, line_gt)
-        d_rho_norm = d_rho / H
+        pred_hh = not pred_no_horizon
 
+        # Line errors are only defined when both label and prediction are horizons.
+        d_theta = d_rho = d_rho_norm = None
+        if gt_hh and pred_hh:
+            line_gt = line_from_slope_offset(row["slope"], row["offset"], H)
+            d_theta = angular_error_deg(line_pred, line_gt)
+            d_rho = positional_error_px(line_pred, line_gt)
+            d_rho_norm = d_rho / H
+
+        # IoU is comparable whenever we have both masks, regardless of has_horizon.
         iou_val: Optional[float] = None
         if mask_pred is not None:
             mask_path = dataset_dir / "masks" / "sky" / (Path(filename).stem + ".png")
@@ -190,7 +236,9 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
                 pred_bool = mask_pred > 127 if mask_pred.dtype != bool else mask_pred
                 iou_val = iou_binary(pred_bool, gt_bool)
 
-        results.append(SampleResult(filename, d_theta, d_rho, d_rho_norm, iou_val, latency_ms, failed=False))
+        results.append(SampleResult(
+            filename, gt_hh, pred_hh, d_theta, d_rho, d_rho_norm, iou_val, latency_ms, failed=False,
+        ))
 
     return results
 
@@ -225,9 +273,34 @@ def print_report(results: list[SampleResult], attempt_name: str):
         print("  all samples failed; nothing to aggregate.")
         return
 
-    _row("Δθ (deg)",                 [r.delta_theta_deg for r in ok])
-    _row("Δρ (px, Hesse)",           [r.delta_rho_px for r in ok])
-    _row("Δρ / image_height",        [r.delta_rho_norm for r in ok])
+    # Confusion matrix over has_horizon. Trigger off ground truth in ALL results (including
+    # failed rows): if every no-horizon sample crashed the detector, those rows live in `failed`
+    # not `ok`, and we'd otherwise hide the matrix exactly when it would be most informative.
+    has_no_horizon_labels = any(not r.gt_has_horizon for r in results)
+    tp = sum(1 for r in ok if r.gt_has_horizon and r.pred_has_horizon)
+    fn = sum(1 for r in ok if r.gt_has_horizon and not r.pred_has_horizon)
+    fp = sum(1 for r in ok if not r.gt_has_horizon and r.pred_has_horizon)
+    tn = sum(1 for r in ok if not r.gt_has_horizon and not r.pred_has_horizon)
+    if has_no_horizon_labels:
+        # Break failures down by GT class so silent-on-no-horizon detectors aren't hidden.
+        failed_gt_horizon = sum(1 for r in failed if r.gt_has_horizon)
+        failed_gt_no_horizon = sum(1 for r in failed if not r.gt_has_horizon)
+        print("  has_horizon confusion matrix:")
+        print(f"    TP (gt=horizon, pred=horizon)         = {tp}")
+        print(f"    FN (gt=horizon, pred=no_horizon)      = {fn}")
+        print(f"    FP (gt=no_horizon, pred=horizon)      = {fp}")
+        print(f"    TN (gt=no_horizon, pred=no_horizon)   = {tn}")
+        if failed:
+            print(f"    failed (no decision)                  = {len(failed)} "
+                  f"(gt=horizon: {failed_gt_horizon}, gt=no_horizon: {failed_gt_no_horizon})")
+        print()
+
+    # Line errors are only defined for true positives (both sides agree there's a horizon).
+    line_rows = [r for r in ok if r.delta_theta_deg is not None]
+    if line_rows:
+        _row("Δθ (deg)",                 [r.delta_theta_deg for r in line_rows])
+        _row("Δρ (px, Hesse)",           [r.delta_rho_px for r in line_rows])
+        _row("Δρ / image_height",        [r.delta_rho_norm for r in line_rows])
 
     iou_vals = [r.iou for r in ok if r.iou is not None]
     if iou_vals:
@@ -235,25 +308,36 @@ def print_report(results: list[SampleResult], attempt_name: str):
 
     _row("latency (ms)",             [r.latency_ms for r in ok])
 
-    passed = sum(
-        1 for r in ok
-        if r.delta_theta_deg < PASS_DTHETA_DEG and r.delta_rho_norm < PASS_DRHO_NORM
+    # Pass = correct has_horizon classification AND (when both horizon) line errors within threshold.
+    def passes(r: SampleResult) -> bool:
+        if r.gt_has_horizon != r.pred_has_horizon:
+            return False
+        if not r.gt_has_horizon:
+            return True  # both correctly say no-horizon; no line to score
+        return r.delta_theta_deg < PASS_DTHETA_DEG and r.delta_rho_norm < PASS_DRHO_NORM
+
+    passed = sum(1 for r in ok if passes(r))
+    pass_total = len(results)  # failed samples count against the pass rate
+    pass_label = (
+        f"  pass rate  (correct has_horizon  &  Δθ<{PASS_DTHETA_DEG:.0f}°  &  Δρ/H<{PASS_DRHO_NORM*100:.0f}%)"
+        if has_no_horizon_labels
+        else f"  pass rate  (Δθ<{PASS_DTHETA_DEG:.0f}°  &  Δρ/H<{PASS_DRHO_NORM*100:.0f}%)"
     )
-    pass_total = len(results)
     print(
-        f"\n  pass rate  (Δθ<{PASS_DTHETA_DEG:.0f}°  &  Δρ/H<{PASS_DRHO_NORM*100:.0f}%)  "
-        f"=  {passed}/{pass_total}  ({passed/pass_total*100:.1f}%)"
+        f"\n{pass_label}"
+        f"  =  {passed}/{pass_total}  ({passed/pass_total*100:.1f}%)"
     )
 
-    print("\n  worst 5 by Δθ:")
-    for r in sorted(ok, key=lambda r: r.delta_theta_deg, reverse=True)[:5]:
-        iou_str = f"  IoU={r.iou:.3f}" if r.iou is not None else ""
-        print(
-            f"    {r.filename[:58]:58s}  "
-            f"Δθ={r.delta_theta_deg:6.2f}°  "
-            f"Δρ={r.delta_rho_px:7.2f}px"
-            f"{iou_str}"
-        )
+    if line_rows:
+        print("\n  worst 5 by Δθ:")
+        for r in sorted(line_rows, key=lambda r: r.delta_theta_deg, reverse=True)[:5]:
+            iou_str = f"  IoU={r.iou:.3f}" if r.iou is not None else ""
+            print(
+                f"    {r.filename[:58]:58s}  "
+                f"Δθ={r.delta_theta_deg:6.2f}°  "
+                f"Δρ={r.delta_rho_px:7.2f}px"
+                f"{iou_str}"
+            )
 
 
 def main():

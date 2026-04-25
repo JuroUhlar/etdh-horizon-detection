@@ -95,13 +95,15 @@ Workflow per image:
 
 1. Left-click two points along the horizon. The line is extended to the image borders so you can sanity-check the geometry before saving.
 2. Press `n` (or Enter) to save the label and advance.
-3. The header bar shows the current `slope` and `offset` so you see exactly what will be written.
+3. If the frame contains only sky or only ground (no visible horizon), press `x` instead — the row is written with `has_horizon=false` and empty slope/offset.
+4. The header bar shows the current `slope` and `offset` so you see exactly what will be written.
 
 Keys:
 
 | Key | Action |
 |---|---|
 | `n` / Enter | save current label and advance |
+| `x` | mark image as NO HORIZON (sky-only or ground-only) and advance |
 | `u` | undo last click |
 | `r` | reset both points |
 | `b` | go back to previous image (does not erase its label) |
@@ -115,7 +117,15 @@ Other flags:
 
 By default, already-labelled images are skipped, and `label.csv` is rewritten atomically after every save, so you can stop and resume freely without losing progress.
 
-The on-disk convention is identical to the upstream Horizon-UAV labels: `slope = dy/dx` in raw pixels and `offset = y_intercept_px / image_height`. See [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md#labelcsv-format) for the full derivation.
+The on-disk convention is a superset of the upstream Horizon-UAV labels:
+
+```
+filename,has_horizon,slope,offset
+foo.jpg,true,-0.128,0.323
+bar.jpg,false,,                 # sky-only / ground-only frame
+```
+
+For horizon rows, `slope = dy/dx` in raw pixels and `offset = y_intercept_px / image_height`, exactly as in the upstream dataset — see [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md#labelcsv-format) for the full derivation. The upstream `data/horizon_uav_dataset/label.csv` is byte-identical to upstream and lacks the `has_horizon` column; loaders treat its rows as `has_horizon=true`.
 
 ## Repository Layout
 
@@ -149,11 +159,13 @@ detect_horizon(image_bgr: np.ndarray)
 
 Accepted return shapes are:
 
-- `None`
+- `None` — detector failed / gave up (counted distinctly from a deliberate "no horizon")
+- `"no_horizon"` (string) — detector deliberately reports the frame has no horizon (sky-only or ground-only)
+- `{"no_horizon": True, "mask": mask}` — same, in dict form, with optional sky mask
 - `(slope_deg, intercept_px, mask)` for the simple baseline style
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
 
-This loose contract is intentional: each attempt stays self-contained instead of becoming a package.
+This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the three current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
 
 ## Metrics
 
@@ -165,6 +177,7 @@ The evaluator scores line accuracy in Hesse normal form, not raw slope/intercept
 - sky-mask IoU when a mask is returned
 - latency
 - pass rate with `Δθ < 5°` and `Δρ / H < 5%`
+- when the dataset contains no-horizon labels: a 2×2 confusion matrix (TP/FN/FP/TN over `has_horizon`), and pass-rate folds in classification agreement (a frame "passes" only if `gt_has_horizon == pred_has_horizon` AND, when both are horizons, line errors are within thresholds)
 
 Details are in [docs/evaluation-metrics.md](./docs/evaluation-metrics.md).
 
