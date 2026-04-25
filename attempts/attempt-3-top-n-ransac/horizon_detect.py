@@ -151,7 +151,7 @@ def detect_horizon(
     ransac_iterations: int = 500,
     inlier_threshold: float = 3.0,
     random_seed: int | None = None,
-) -> list[dict]:
+):
     """
     Estimate the top-n most likely horizon lines, sorted by confidence desc.
 
@@ -164,7 +164,10 @@ def detect_horizon(
       - inlier_count:       absolute number of supporting boundary pixels.
       - mask:               binary sky/ground mask (shared across all results).
 
-    Returns an empty list if no boundary can be extracted.
+    Returns:
+      - dict when n == 1, for compatibility with the single-result evaluator API.
+      - list[dict] when n > 1.
+      - None / [] when no boundary can be extracted, matching the shape above.
 
     Args:
         n:                  number of candidates to return.
@@ -176,20 +179,23 @@ def detect_horizon(
 
     ys, xs = np.where(boundary > 0)
     if len(xs) < 2:
-        return []
+        return None if n == 1 else []
 
     points = np.column_stack([xs, ys]).astype(np.float32)
     rng = np.random.default_rng(random_seed)
 
     hypotheses = _ransac_hypotheses(points, ransac_iterations, inlier_threshold, rng)
     if not hypotheses:
-        return []
+        return None if n == 1 else []
 
     results = _cluster_and_refit(hypotheses, points)
     for r in results:
         r["mask"] = mask
 
-    return results[:n]
+    results = results[:n]
+    if n == 1:
+        return results[0] if results else None
+    return results
 
 
 def draw_horizon(image_bgr: np.ndarray, results: list[dict]) -> np.ndarray:
@@ -252,6 +258,9 @@ def main():
     if not results:
         print(f"{args.image.name}: no horizon detected  (time={elapsed_ms:.1f}ms)")
         return
+
+    if isinstance(results, dict):
+        results = [results]
 
     for rank, r in enumerate(results):
         offset = r["intercept_y_at_x0"]
