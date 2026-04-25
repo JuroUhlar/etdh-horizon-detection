@@ -223,7 +223,7 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None, 
         iou_val: Optional[float] = None
         if mask_pred is not None:
             mask_path = dataset_dir / "masks" / "sky" / (Path(filename).stem + ".png")
-            mask_gt = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE)
+            mask_gt = cv2.imread(str(mask_path), cv2.IMREAD_GRAYSCALE) if mask_path.exists() else None
             if mask_gt is not None:
                 gt_bool = mask_gt > 127
                 pred_bool = mask_pred > 127 if mask_pred.dtype != bool else mask_pred
