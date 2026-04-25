@@ -47,10 +47,11 @@ Pass rate and latency are from `tools/evaluate.py` on **Horizon-UAV** (490 frame
 | 5 — `attempts/attempt-5-efficient-ransac/` | Tighter N=1 RANSAC: removed clustering, batched early stop, module-level RNG | 39.5 % | — | 2.04 ms | (not benched) | — | Done, scored — regression |
 | 6 — `attempts/attempt-6-dual-channel-ransac/` | Dual-channel (gray + Lab b\*) Otsu, confidence-pick winner, 0° row-scan fallback | 92.5 % | 8.3 % | (not benched) | (not benched) | — | Done, scored — regression on FPV |
 | 7 — `attempts/attempt-7-multicue-ettinger/` | Pool top-K from gray + Lab b\* RANSAC; Sobel orientation filter; rerank by Ettinger coherence × angle prior on 60×60 Lab thumbnail; abstain on degenerate masks / low coherence | **96.9 %** | **52.5 %** | 8.62 ms | 22.3 ms | ✓ PASS | Done, scored |
+| 8 — `attempts/attempt-8-temporal-prior/` | Attempt 7 plus scene-change-gated temporal prior in candidate rerank; calibrated coherence floor for fewer no-horizon FP | 96.7 % | **57.5 %** | 9.2 ms | 21.5 ms | ✓ PASS | Done, scored — best FPV |
 
 Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1`. Speed gate: mean AND p90 latency ≤ 67 ms. Run via `tools/bench_docker.sh`.
 
-Attempt 7 is the current best on both datasets and the first attempt with a working `no_horizon` abstention path (TN = 6 / 10 on the FPV labels).
+Attempt 7 remains the best on Horizon-UAV by one frame. Attempt 8 is the current best on FPV/ATV (69 / 120) and improves no-horizon TN to 8 / 10, at the cost of more horizon false negatives.
 
 ## Known failure modes & root causes
 
@@ -61,16 +62,16 @@ All remaining hard failures after attempt 2 are **classifier failures**, not fit
 | Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3, 4 (partially fixed in 7 by Lab b\* fallback) |
 | Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3, 4 (partially fixed in 7 by Ettinger rerank) |
 | Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially), 3, 4 (partially fixed in 7) |
-| FPV treeline / canopy | Ground-level FPV through dense trees: real horizon is partially clipped by canopy; the strongest color-coherent split lands along a treetop | All. Worst remaining failure mode in attempt 7 — Δθ up to 38° on `04_10m34s-11m00s_fpv_treeline_*` frames |
-| No-horizon false positive | Sky-only / ground-only frames not quite degenerate enough to trip the abstention threshold; just enough texture coherence to clear the floor | 1–6 fit a line on every frame; attempt 7 abstains on 6 of 10 (4 FP remaining) |
+| FPV treeline / canopy | Ground-level FPV through dense trees: real horizon is partially clipped by canopy; the strongest color-coherent split lands along a treetop | All. Worst remaining failure mode in attempts 7–8 — Δθ up to 38° on `04_10m34s-11m00s_fpv_treeline_*` frames |
+| No-horizon false positive | Sky-only / ground-only frames not quite degenerate enough to trip the abstention threshold; just enough texture coherence to clear the floor | 1–6 fit a line on every frame; attempt 7 abstains on 6 of 10; attempt 8 abstains on 8 of 10 but increases horizon FN |
 
 Rotation failures from attempt 1 (column-scan assumption) were resolved in attempt 2.
 
 ## Next-step options (ranked)
 
 1. **Better treeline behaviour** — currently the worst failure mass on FPV. Options: detect "canopy clipping" via row-wise variance profile and abstain; or fit two-line model (canopy line + horizon line) and pick the upper.
-2. **Calibrate abstention thresholds with a sweep** — `_DEGENERATE_FRACTION` and `_FALLBACK_COHERENCE` in attempt 7 were hand-picked. A proper FN/FP sweep on FPV would likely move ~3 of the remaining 9 errors.
-3. **Hough-transform variant** — extract edge segments, filter by length/slope, group collinear segments. Independent enough from the current pipeline that a third candidate source might help on cases where both Otsu masks fail.
+2. **Reduce attempt-8 false negatives** — the higher `_FALLBACK_COHERENCE` improves no-horizon TN but increases FPV horizon FN from 5 to 10. A richer abstention model could separate true no-horizon frames from weak-horizon frames better than one scalar floor.
+3. **Avoid naive Hough as a third cue** — attempt 8 tried a capped Canny + probabilistic-Hough candidate source and reverted it after a FPV subset regression; road/overlay/tree edges dominated the extra candidates.
 4. **Real Raspberry Pi 5 benchmark** — the Docker model gates the speed budget honestly enough for development, but a real-Pi run is still required before declaring the requirement met.
 
 Background research on all of these methods (literature references, dataset survey, test-design notes): [`docs/research-horizon-detection.md`](docs/research-horizon-detection.md).
@@ -104,7 +105,11 @@ hack-horizon/
 │   ├── attempt-6-dual-channel-ransac/
 │   │   ├── horizon_detect.py
 │   │   └── result.md
-│   └── attempt-7-multicue-ettinger/
+│   ├── attempt-7-multicue-ettinger/
+│   │   ├── horizon_detect.py
+│   │   ├── requirements.txt
+│   │   └── result.md
+│   └── attempt-8-temporal-prior/
 │       ├── horizon_detect.py
 │       ├── requirements.txt
 │       └── result.md
@@ -122,5 +127,6 @@ hack-horizon/
 
 - **Each attempt** lives in its own `attempts/attempt-N-<name>/` directory with a `horizon_detect.py` exposing a `detect_horizon(image_bgr) -> list[dict]` API and a `result.md` documenting method, scores, and failure analysis.
 - **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image Horizon-UAV dataset before an attempt is considered done; use `--dataset data/video_clips_fpv_atv` for the secondary labelled set. Outputs are `full-eval-results-<dataset_dir_name>.json` per run.
+- **Attempt summaries are always updated** in `attempt_comparison.md` whenever a new attempt is added or rescored. Do this before declaring the attempt complete.
 - **Line representation internally:** `(vx, vy, x0, y0)` from `cv2.fitLine` — valid at all orientations. Convert to `(angle_deg, intercept_y)` for human output; convert to Hesse `(θ, ρ)` for metric computation.
 - **Python environment:** `.venv/` at repo root.
