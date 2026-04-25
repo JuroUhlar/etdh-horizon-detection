@@ -8,6 +8,7 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
 - an evaluator in `tools/evaluate.py`
+- visual rendering utilities in `tools/render_outputs.py` and `tools/stitch_video.py`
 - notes in `docs/` plus a plain-language comparison in `attempt_comparison.md`
 
 ## Current Status
@@ -53,6 +54,25 @@ Use `--limit` for quick iteration:
 .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --limit 50
 ```
 
+Render annotated frames and a preview video:
+
+```bash
+.venv/bin/python tools/render_outputs.py attempts/attempt-2-rotation-invariant --images data/samples
+```
+
+That writes:
+
+- `attempts/<attempt>/outputs/<source>/frames/*.jpg`
+- `attempts/<attempt>/outputs/<source>/preview.mp4`
+
+You can also restitch any frame directory manually:
+
+```bash
+.venv/bin/python tools/stitch_video.py attempts/attempt-2-rotation-invariant/outputs/samples/frames --frame-duration 0.75
+```
+
+The default preview pacing is `0.5s` per frame (`2 fps`). Override it with `--frame-duration <seconds>`.
+
 ## Repository Layout
 
 ```text
@@ -69,6 +89,8 @@ docs/
   inspiration-implementations.md
 tools/
   evaluate.py
+  render_outputs.py
+  stitch_video.py
 ```
 
 ## Detector Contract
