@@ -82,3 +82,35 @@ In plain terms: attempt 3 is much better at finding the right straight line, but
 ## Bottom Line
 
 Attempt 3 is the accuracy leader. If the priority is benchmark score on this dataset, this is the current best attempt. If the priority is lightweight runtime, the cost is substantial and needs to be judged against the deployment target.
+
+## Train/Test Evaluation
+
+seed=42 | train=388 | test=102
+
+| Metric | Train | Test |
+|---|---|---|
+| N evaluated | 388 | 102 |
+| N failed | 0 | 0 |
+| FPS (excl. 10-frame warmup) | 15.0 | 13.6 |
+| Mean latency (ms) | 66.82 | 73.41 |
+| Mean angle error (°) | 1.14 | 0.85 |
+| P90 angle error (°) | 2.35 | 2.09 |
+| Mean position error (%H) | 2.37 | 1.53 |
+| P90 position error (%H) | 2.96 | 2.82 |
+| Mean IoU | 0.928 | 0.931 |
+| Pass rate (Δθ<5° & Δρ<5%H) | 95.4% | 97.1% |
+| mAP (threshold sweep) | 0.8080 | 0.8321 |
+
+**mAP threshold breakdown:**
+
+| Δθ max | Δρ/H max | Train precision | Test precision |
+|---|---|---|---|
+| 1° | 1% | 0.124 | 0.186 |
+| 2° | 2% | 0.595 | 0.618 |
+| 3° | 3% | 0.889 | 0.902 |
+| 5° | 5% | 0.954 | 0.971 |
+| 7° | 7% | 0.964 | 0.980 |
+| 10° | 10% | 0.974 | 1.000 |
+| 15° | 15% | 0.982 | 1.000 |
+| 20° | 20% | 0.982 | 1.000 |
+
