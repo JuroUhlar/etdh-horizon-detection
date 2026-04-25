@@ -16,7 +16,7 @@ mirror from accidental format changes.
 
 Usage:
     .venv/bin/python tools/annotate_horizon.py
-    .venv/bin/python tools/annotate_horizon.py --dataset data/video_clips_ukraine_atv
+    .venv/bin/python tools/annotate_horizon.py --dataset data/video_clips_fpv_atv
     .venv/bin/python tools/annotate_horizon.py --relabel       # revisit already-labeled images
     .venv/bin/python tools/annotate_horizon.py --start 42      # jump to index 42
     .venv/bin/python tools/annotate_horizon.py --dataset data/horizon_uav_dataset --upgrade-legacy-schema
@@ -40,7 +40,7 @@ import cv2
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_DATASET = REPO_ROOT / "data" / "video_clips_ukraine_atv"
+DEFAULT_DATASET = REPO_ROOT / "data" / "video_clips_fpv_atv"
 
 WINDOW_NAME = "horizon annotator"
 MAX_DISPLAY_W = 1600
@@ -377,7 +377,7 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int, upgrade_legacy_
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET,
-                        help="dataset directory containing images/ (default: data/video_clips_ukraine_atv)")
+                        help="dataset directory containing images/ (default: data/video_clips_fpv_atv)")
     parser.add_argument("--relabel", action="store_true",
                         help="iterate over all images, including ones already in label.csv")
     parser.add_argument("--start", type=int, default=0,

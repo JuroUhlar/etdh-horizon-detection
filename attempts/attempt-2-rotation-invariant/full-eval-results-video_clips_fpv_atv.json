@@ -1,0 +1,104 @@
+{
+  "attempt": "attempt-2-rotation-invariant",
+  "attempt_dir": "attempts/attempt-2-rotation-invariant",
+  "dataset_dir": "data/video_clips_fpv_atv",
+  "limit": null,
+  "seed": 0,
+  "generated_at_utc": "2026-04-25T16:56:28.388059Z",
+  "wall_clock_s": 3.7579194999998435,
+  "summary": {
+    "counts": {
+      "total": 120,
+      "evaluated": 120,
+      "failed": 0,
+      "line_scored": 110
+    },
+    "has_no_horizon_labels": true,
+    "confusion_matrix": {
+      "tp": 110,
+      "fn": 0,
+      "fp": 10,
+      "tn": 0,
+      "failed_gt_horizon": 0,
+      "failed_gt_no_horizon": 0
+    },
+    "accuracy": {
+      "verdict": "FAIL",
+      "passed": 5,
+      "total": 120,
+      "pass_rate": 0.041666666666666664,
+      "pass_thresholds": {
+        "delta_theta_deg_lt": 5.0,
+        "delta_rho_norm_lt": 0.05
+      },
+      "angle_error_deg": {
+        "mean": 15.910099470321498,
+        "median": 11.445260972271477,
+        "p90": 34.383508098309605,
+        "worst": 66.54509666537083
+      },
+      "position_error_norm": {
+        "mean": 0.20836314418440396,
+        "median": 0.1694498033421759,
+        "p90": 0.4396812284392141,
+        "worst": 0.8346334656266193
+      },
+      "hesse_distance_px": {
+        "mean": 100.01430920851392,
+        "median": 81.33590560424443,
+        "p90": 211.04698965082275,
+        "worst": 400.62406350077725
+      }
+    },
+    "mask_iou": null,
+    "speed": {
+      "verdict": "PASS",
+      "latency_budget_ms": 66.66666666666667,
+      "latency_ms": {
+        "mean": 29.78678956666651,
+        "median": 26.80291650176514,
+        "p90": 47.40869199595181,
+        "worst": 85.90641600312665
+      },
+      "fps": {
+        "mean": 33.57192952136975,
+        "median": 37.30937265480582,
+        "p90": 21.093178442581564,
+        "worst": 11.640574086615416
+      },
+      "pct_frames_over_budget": 0.8333333333333334
+    },
+    "worst_frames_by_angle": [
+      {
+        "filename": "04_10m34s-11m00s_fpv_treeline_f042.jpg",
+        "delta_theta_deg": 66.54509666537083,
+        "delta_rho_norm": 0.3207304093896208,
+        "iou": null
+      },
+      {
+        "filename": "01_01m32s-01m55s_aerial_recon_f016.jpg",
+        "delta_theta_deg": 58.63407352796716,
+        "delta_rho_norm": 0.002735441547471214,
+        "iou": null
+      },
+      {
+        "filename": "01_01m32s-01m55s_aerial_recon_f015.jpg",
+        "delta_theta_deg": 50.15199955533385,
+        "delta_rho_norm": 0.0753926692133192,
+        "iou": null
+      },
+      {
+        "filename": "01_01m32s-01m55s_aerial_recon_f017.jpg",
+        "delta_theta_deg": 48.45945881977525,
+        "delta_rho_norm": 0.07075198346047076,
+        "iou": null
+      },
+      {
+        "filename": "01_01m32s-01m55s_aerial_recon_f013.jpg",
+        "delta_theta_deg": 43.97118684049826,
+        "delta_rho_norm": 0.8346334656266193,
+        "iou": null
+      }
+    ]
+  }
+}

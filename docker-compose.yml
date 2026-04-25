@@ -4,20 +4,33 @@ services:
       context: .
       dockerfile: docker/Dockerfile
     # -----------------------------------------------------------------------
-    # Resource limits — approximating Raspberry Pi 5 (4 GB variant) with a
-    # documented reserve for Hailo driver overhead.
+    # Resource limits — conservative approximation of one Raspberry Pi 5
+    # Cortex-A76 core with Hailo driver running in parallel.
     #
-    #   Physical Pi 5:  4 cores,  4 096 MB RAM
-    #   Hailo reserve: ~1 core,    ~512 MB  (driver + inference orchestration)
-    #   Container gets: 3 cores,  3 584 MB
+    #   Physical Pi 5:  4 cores @ 2.4 GHz Cortex-A76,  4 096 MB RAM
+    #   Hailo reserve: ~1 core,  ~512 MB  (driver + inference orchestration)
+    #   Available to detector: 3 cores, 3 584 MB
     #
-    # Override via .env (see .env.example) or by setting env vars before running.
+    # cpus: "1" — the detector runs one Python thread per frame; the other two
+    # available cores only help if OpenCV parallelises internally (see env vars
+    # below).  Limiting to 1 core + OMP_NUM_THREADS=1 forces fully serial
+    # execution, matching how a single Cortex-A76 core would run the detector.
+    # Note: Mac/Linux x86 cores are ~1.5–2× faster per clock than Cortex-A76,
+    # so passing here is a necessary but not sufficient condition; verify on
+    # real hardware for the final gate.
     # -----------------------------------------------------------------------
-    # Raspberry Pi 5 (4 GB) minus ~1 core / ~512 MB Hailo driver overhead.
-    # See docs/evaluation-environment.md for rationale.
-    cpus: "3"
+    cpus: "1"
     mem_limit: "3584m"
     memswap_limit: "3584m"   # disable swap to match bare-metal
+
+    environment:
+      # Prevent OpenCV/NumPy from using multiple threads within a single frame,
+      # which would give an unfair advantage over a single Pi core.
+      - OMP_NUM_THREADS=1
+      - OPENBLAS_NUM_THREADS=1
+      - NUMEXPR_NUM_THREADS=1
+      # Disable OpenCL fallback — Pi 5 CPU has no GPU-accelerated OpenCL path.
+      - OPENCV_OPENCL_RUNTIME=disabled
 
     volumes:
       # Repo source — bind-mounted so edits on the host are reflected immediately
@@ -27,3 +40,4 @@ services:
     # No fixed entrypoint — run any script directly:
     #   docker compose run --rm horizon python tools/evaluate.py attempts/attempt-2-rotation-invariant
     #   docker compose run --rm horizon python attempts/attempt-3-top-n-ransac/horizon_detect.py data/...
+    #   tools/bench_docker.sh

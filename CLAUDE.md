@@ -36,11 +36,14 @@ Full metric definitions, aggregate statistics, and ground-truth conventions: [`d
 
 ## Attempt history
 
+Pass rate and latency are from `tools/evaluate.py` on **Horizon-UAV** (490 frames) on the development host; see each attempt’s `full-eval-results-horizon_uav_dataset.json` for the exact run.
+
 | Attempt | Method | Pass rate | Mean latency (dev) | Status |
 |---|---|---|---|---|
-| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | 0.77 ms | Done, scored |
-| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | 3.57 ms | Done, scored |
-| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; replaces single fitLine with RANSAC multi-hypothesis + Huber refit | TBD | TBD | Code written, not yet evaluated |
+| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | 0.76 ms | Done, scored |
+| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | 3.70 ms | Done, scored |
+| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; RANSAC multi-hypothesis + Huber refit | 95.5 % | 71.5 ms | Done, scored |
+| 4 — `attempts/attempt-4-top-n-ransac_tuned/` | Same as 3; vectorised RANSAC scoring, boundary subsampling, fewer iterations | 95.5 % | 18.0 ms | Done, scored |
 
 ## Known failure modes & root causes
 
@@ -48,9 +51,9 @@ All remaining hard failures after attempt 2 are **classifier failures**, not fit
 
 | Failure mode | Trigger | Affected attempts |
 |---|---|---|
-| Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3 |
-| Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3 |
-| Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially) |
+| Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3, 4 |
+| Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3, 4 |
+| Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially), 3, 4 |
 
 Rotation failures from attempt 1 (column-scan assumption) were resolved in attempt 2.
 
@@ -80,9 +83,12 @@ hack-horizon/
 │   ├── attempt-2-rotation-invariant/
 │   │   ├── horizon_detect.py
 │   │   └── result.md
-│   └── attempt-3-top-n-ransac/
+│   ├── attempt-3-top-n-ransac/
+│   │   ├── horizon_detect.py
+│   │   └── requirements.txt
+│   └── attempt-4-top-n-ransac_tuned/
 │       ├── horizon_detect.py
-│       └── requirements.txt
+│       └── result.md
 ├── data/
 │   └── horizon_uav_dataset/         # 490-image benchmark (images/, masks/, label.csv)
 ├── docs/
@@ -96,6 +102,6 @@ hack-horizon/
 ## Conventions
 
 - **Each attempt** lives in its own `attempts/attempt-N-<name>/` directory with a `horizon_detect.py` exposing a `detect_horizon(image_bgr) -> list[dict]` API and a `result.md` documenting method, scores, and failure analysis.
-- **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image dataset before an attempt is considered done.
+- **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image Horizon-UAV dataset before an attempt is considered done; use `--dataset data/video_clips_fpv_atv` for the secondary labelled set. Outputs are `full-eval-results-<dataset_dir_name>.json` per run.
 - **Line representation internally:** `(vx, vy, x0, y0)` from `cv2.fitLine` — valid at all orientations. Convert to `(angle_deg, intercept_y)` for human output; convert to Hesse `(θ, ρ)` for metric computation.
 - **Python environment:** `.venv/` at repo root.

@@ -4,10 +4,10 @@ Lightweight horizon detection experiments for a UAV hackathon-style task: find t
 
 This repo is not a packaged library. It is an evaluation sandbox with:
 
-- three classical computer-vision attempts under `attempts/`
+- four classical computer-vision attempts under `attempts/`
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
-- a Ukraine ATV FPV clip set under `data/video_clips_ukraine_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
+- an FPV/ATV clip set under `data/video_clips_fpv_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
 - an evaluator in `tools/evaluate.py`
 - visual rendering utilities in `tools/render_outputs.py` and `tools/stitch_video.py`
 - an interactive annotator in `tools/annotate_horizon.py` for labelling new frame sets in the same `label.csv` schema
@@ -15,34 +15,37 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 
 ## Current Status
 
-The three attempts tell a clear story on the original Horizon-UAV benchmark:
+The four attempts tell a clear story on the original Horizon-UAV benchmark:
 
 - `attempt-1-otsu-column-scan`: fastest, but brittle
 - `attempt-2-rotation-invariant`: much better line fitting, still mask-limited
-- `attempt-3-top-n-ransac`: best accuracy by far, much slower
+- `attempt-3-top-n-ransac`: best line accuracy, much slower
+- `attempt-4-top-n-ransac_tuned`: same accuracy as 3 on Horizon-UAV with much lower latency (vectorised RANSAC + subsampling)
 
-…and the story *inverts* on the Ukraine ATV FPV dataset, where every attempt fails and attempt 3 fails worst. The two datasets exercise different things, so we report them side by side.
+…and the story changes on the FPV/ATV clip set after cropping out the large side bars and resizing frames to a UAV-like scale. The two datasets still exercise different things, so we report them side by side.
 
 **Horizon-UAV** (490 images, 480×480, every frame has a horizon):
 
 | Attempt | Pass rate | Mean Δθ | Mean Δρ | Mean latency |
 |---|---:|---:|---:|---:|
-| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.639 ms |
-| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.579 ms |
-| Attempt 3 | 95.7% | 1.113° | 10.458 px | 69.703 ms |
+| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.757 ms |
+| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.703 ms |
+| Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms |
+| Attempt 4 | 95.5% | 1.078° | 10.625 px | 18.006 ms |
 
-**Ukraine ATV FPV** (120 frames, 1920×1080, 110 horizon + 10 no-horizon):
+**FPV/ATV clips** (120 frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon):
 
 | Attempt | Pass rate | Mean Δθ (TP only) | Mean Δρ | Mean latency | Confusion (TP/FN/FP/TN) |
 |---|---:|---:|---:|---:|---:|
-| Attempt 1 | 3.3% | 14.039° | 361.246 px | 4.125 ms | 110 / 0 / 10 / 0 |
-| Attempt 2 | 0.0% | 13.900° | 362.192 px | 34.973 ms | 110 / 0 / 10 / 0 |
-| Attempt 3 | 0.0% | 82.802° | 1104.496 px | 562.579 ms | 110 / 0 / 10 / 0 |
+| Attempt 1 | 16.7% | 7.7° | 59.7 px | 0.814 ms | 110 / 0 / 10 / 0 |
+| Attempt 2 | 4.2% | 15.9° | 100.0 px | 30.064 ms | 110 / 0 / 10 / 0 |
+| Attempt 3 | 45.0% | 6.6° | 60.6 px | 776.2 ms | 110 / 0 / 10 / 0 |
+| Attempt 4 | 34.2% | 11.5° | 83.6 px | 75.6 ms | 110 / 0 / 10 / 0 |
 
 Two things to read carefully on the ATV row:
 
 - The 10 no-horizon frames are forced false positives — none of the current attempts implement the `no_horizon` return path the evaluator supports, so the maximum reachable pass rate on this set is `110/120 = 91.7%`, and the actual numbers are much lower than that because line accuracy collapses.
-- All three attempts share an Otsu brightness mask as their first stage, which assumes "sky is bright, ground is dark". FPV treeline / road footage breaks that assumption, so the boundary they're fitting isn't the real horizon. Attempt 3's RANSAC then locks confidently onto vertical artefacts (trees, road edges) — that's why its mean Δθ on ATV is ~83°, not single digits.
+- Cropping the side bars matters a lot. Once the black borders are gone, attempt 3 stops catastrophically locking onto frame artefacts and becomes the clear ATV accuracy leader. Attempt 4 is much faster on ATV but does not always beat attempt 3 on line accuracy (RANSAC is stochastic; tuning trades speed for some borderline cases). The shared Otsu brightness-mask first stage is still the binding constraint, and none of the current attempts can classify no-horizon frames yet.
 
 The full breakdown, including per-attempt latency scaling and a detailed read of why the ranking inverts, lives in [attempt_comparison.md](./attempt_comparison.md).
 
@@ -64,6 +67,8 @@ Evaluate an attempt on the full dataset:
 ```bash
 .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac
 ```
+
+That also writes `attempts/<attempt>/full-eval-results-<dataset_dir_name>.json` (e.g. `full-eval-results-horizon_uav_dataset.json`) with run metadata and aggregate metrics (no per-frame dump).
 
 Use `--limit` for quick iteration:
 
@@ -94,7 +99,7 @@ The default preview pacing is `0.5s` per frame (`2 fps`). Override it with `--fr
 
 `tools/annotate_horizon.py` is a small OpenCV GUI for hand-labelling horizon lines on a folder of images. It writes a 4-column `label.csv` (`filename,has_horizon,slope,offset`), and `tools/evaluate.py` reads both that schema and the upstream 3-column Horizon-UAV schema without any conversion step.
 
-Run it against the default dataset (`data/video_clips_ukraine_atv/`):
+Run it against the default dataset (`data/video_clips_fpv_atv/`):
 
 ```bash
 .venv/bin/python tools/annotate_horizon.py
@@ -150,10 +155,11 @@ attempts/
   attempt-1-otsu-column-scan/
   attempt-2-rotation-invariant/
   attempt-3-top-n-ransac/
+  attempt-4-top-n-ransac_tuned/
 data/
   horizon_uav_dataset/         # 490 labelled images + masks + label.csv
   samples/                     # 4 manual stress-test images, especially rotation edge cases
-  video_clips_ukraine_atv/     # FPV clips + 120 extracted frames; label.csv built with annotate_horizon.py
+  video_clips_fpv_atv/         # FPV clips + 120 extracted frames; label.csv built with annotate_horizon.py
 docs/
   evaluation-metrics.md
   research-horizon-detection.md
@@ -182,7 +188,7 @@ Accepted return shapes are:
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
 - `[{"line": ...}, ...]` for top-N detectors; the evaluator scores the first candidate
 
-This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the three current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
+This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the four current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the FPV/ATV clip set.
 
 ## Metrics
 
@@ -217,7 +223,7 @@ The current attempts in this repo do not do either — they output a horizon lin
 
 - `data/horizon_uav_dataset/` is the main benchmark and includes images, land/sky masks, and `label.csv`.
 - `data/samples/` is a tiny manual stress set for rotated or near-vertical cases that the main dataset does not cover well.
-- `data/video_clips_ukraine_atv/` holds short FPV clips (`clips/`) plus 120 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow a superset of the main benchmark schema.
+- `data/video_clips_fpv_atv/` holds short FPV clips (`clips/`) plus 120 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow a superset of the main benchmark schema.
 - The dataset mirror has its own README at [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md).
 
 ## If You Add Another Attempt
