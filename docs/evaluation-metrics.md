@@ -59,7 +59,7 @@ For *aggregated scoring* we always use `(θ, ρ)` errors and optional IoU.
 
 ## No-horizon frames
 
-Some frames in `data/video_clips_ukraine_atv/` contain only sky or only ground — there is no horizon line to fit. These frames are labelled `has_horizon=false` (with empty `slope`/`offset`) in `label.csv`. The detector contract accordingly accepts a deliberate "no horizon" output, distinct from a failure return:
+Some frames in `data/video_clips_fpv_atv/` contain only sky or only ground — there is no horizon line to fit. These frames are labelled `has_horizon=false` (with empty `slope`/`offset`) in `label.csv`. The detector contract accordingly accepts a deliberate "no horizon" output, distinct from a failure return:
 
 - `None` — detector failed / gave up. Counted as `failed` in reporting.
 - `"no_horizon"` or `{"no_horizon": True, ...}` — detector decided the frame has no horizon.

@@ -1,0 +1,102 @@
+{
+  "attempt": "attempt-4-top-n-ransac_tuned",
+  "attempt_dir": "attempts/attempt-4-top-n-ransac_tuned",
+  "dataset_dir": "/Users/jurajuhlar/Documents/Code/personal/etdh-horizon-detection/data/horizon_uav_dataset",
+  "limit": null,
+  "seed": 0,
+  "generated_at_utc": "2026-04-25T16:58:43.388283Z",
+  "wall_clock_s": 10.427747790992726,
+  "summary": {
+    "counts": {
+      "total": 490,
+      "evaluated": 490,
+      "failed": 0,
+      "line_scored": 490
+    },
+    "has_no_horizon_labels": false,
+    "confusion_matrix": null,
+    "accuracy": {
+      "verdict": "PASS",
+      "passed": 472,
+      "total": 490,
+      "pass_rate": 0.963265306122449,
+      "pass_thresholds": {
+        "delta_theta_deg_lt": 5.0,
+        "delta_rho_norm_lt": 0.05
+      },
+      "angle_error_deg": {
+        "mean": 1.0392699650756172,
+        "median": 0.7084661657380131,
+        "p90": 2.1789351855351584,
+        "worst": 7.2870038172878004
+      },
+      "position_error_norm": {
+        "mean": 0.017482626715075993,
+        "median": 0.014567304321959778,
+        "p90": 0.02903206750907332,
+        "worst": 0.5416259393352666
+      },
+      "hesse_distance_px": {
+        "mean": 8.391660823236476,
+        "median": 6.992306074540693,
+        "p90": 13.935392404355191,
+        "worst": 259.98045088092795
+      }
+    },
+    "mask_iou": {
+      "mean": 0.9286284241397558,
+      "median": 0.9521976099077287,
+      "p90": 0.9843630877921341,
+      "worst": 0.9972417844579927
+    },
+    "speed": {
+      "verdict": "PASS",
+      "latency_budget_ms": 66.66666666666667,
+      "latency_ms": {
+        "mean": 17.259132814277628,
+        "median": 11.87402099458268,
+        "p90": 36.81030860461762,
+        "worst": 65.85791600809898
+      },
+      "fps": {
+        "mean": 57.9403386462586,
+        "median": 84.217469419688,
+        "p90": 27.166303079419347,
+        "worst": 15.184203518936485
+      },
+      "pct_frames_over_budget": 0.0
+    },
+    "worst_frames_by_angle": [
+      {
+        "filename": "d6-converted.mp4-00.02.56.484-00.05.09.707_10.jpg",
+        "delta_theta_deg": 7.2870038172878004,
+        "delta_rho_norm": 0.09523218946921208,
+        "iou": 0.9422577500997587
+      },
+      {
+        "filename": "e6-converted.mp4-00.02.56.059-00.05.03.817_10.jpg",
+        "delta_theta_deg": 7.249554547870471,
+        "delta_rho_norm": 0.09493677302137732,
+        "iou": 0.942246297168577
+      },
+      {
+        "filename": "b4-converted.mp4-00.07.44.544-00.08.07.367_20.jpg",
+        "delta_theta_deg": 6.073868885719598,
+        "delta_rho_norm": 0.014201219994639835,
+        "iou": 0.88909148222089
+      },
+      {
+        "filename": "d5-converted.mp4-00.04.00.521-00.07.04.857_10.jpg",
+        "delta_theta_deg": 5.590870139249695,
+        "delta_rho_norm": 0.10580452401542315,
+        "iou": 0.9199399514229671
+      },
+      {
+        "filename": "e5-converted.mp4-00.03.59.817-00.06.58.241_10.jpg",
+        "delta_theta_deg": 5.588430650257536,
+        "delta_rho_norm": 0.1065627279386916,
+        "iou": 0.9179176343964198
+      }
+    ]
+  }
+}

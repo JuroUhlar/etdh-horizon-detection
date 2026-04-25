@@ -50,7 +50,7 @@ Measured on the Horizon-UAV dataset (`490` images) with:
 | Δρ (line position error, px) | 36.700 | 7.767 | 101.693 | 616.916 |
 | Δρ / H (normalised line position error) | 0.076 | 0.016 | 0.212 | 1.285 |
 | Sky-mask IoU | 0.929 | 0.952 | 0.984 | 0.997 |
-| Latency (ms) | 3.689 | 2.628 | 6.907 | 28.770 |
+| Latency (ms) | 3.703 | 2.636 | 7.042 | 20.370 |
 
 **Pass rate:** `398 / 490 = 81.2%`
 
@@ -61,7 +61,7 @@ Measured on the Horizon-UAV dataset (`490` images) with:
 | Pass rate | 62.4% | 81.2% | +18.8 pts |
 | Mean Δθ | 10.461° | 7.313° | better |
 | Mean Δρ | 70.744 px | 36.700 px | much better |
-| Mean latency | 0.762 ms | 3.689 ms | slower, but still fast |
+| Mean latency | 0.757 ms | 3.703 ms | slower, but still fast |
 
 ## What These Numbers Mean
 
@@ -82,35 +82,3 @@ In plain terms: attempt 2 is much better at drawing the line once it has a reaso
 ## Bottom Line
 
 Attempt 2 is the best speed/quality tradeoff among the first two versions. It fixes the rotation problem and improves robustness without adding much complexity, but it does not yet solve the hardest scenes.
-
-## Train/Test Evaluation
-
-seed=42 | train=388 | test=102
-
-| Metric | Train | Test |
-|---|---|---|
-| N evaluated | 388 | 102 |
-| N failed | 0 | 0 |
-| FPS (excl. 10-frame warmup) | 315.2 | 304.9 |
-| Mean latency (ms) | 3.17 | 3.28 |
-| Mean angle error (°) | 7.71 | 5.80 |
-| P90 angle error (°) | 32.88 | 23.37 |
-| Mean position error (%H) | 7.95 | 6.48 |
-| P90 position error (%H) | 21.23 | 11.21 |
-| Mean IoU | 0.928 | 0.931 |
-| Pass rate (Δθ<5° & Δρ<5%H) | 80.7% | 83.3% |
-| mAP (threshold sweep) | 0.6920 | 0.7255 |
-
-**mAP threshold breakdown:**
-
-| Δθ max | Δρ/H max | Train precision | Test precision |
-|---|---|---|---|
-| 1° | 1% | 0.131 | 0.167 |
-| 2° | 2% | 0.528 | 0.559 |
-| 3° | 3% | 0.742 | 0.775 |
-| 5° | 5% | 0.807 | 0.833 |
-| 7° | 7% | 0.814 | 0.853 |
-| 10° | 10% | 0.830 | 0.873 |
-| 15° | 15% | 0.838 | 0.873 |
-| 20° | 20% | 0.845 | 0.873 |
-

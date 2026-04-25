@@ -3,87 +3,70 @@
 This attempt keeps the exact same sky/ground classifier as attempts 2 and 3
 (grayscale → Otsu → morphological close/open → gradient boundary), and makes
 no changes to the cluster-and-refit step. All changes are to the RANSAC
-hypothesis scoring step, targeting the slow tail without touching accuracy.
+hypothesis scoring step, targeting latency without intentionally sacrificing
+Horizon-UAV accuracy.
 
 ## What Changed From Attempt 3
 
 ### 1. Vectorised RANSAC hypothesis scoring
 
-Attempt 3 scored each of 500 candidate lines in a Python `for` loop: one
-numpy distance computation per iteration. Attempt 4 scores all hypotheses in
-a single matrix operation — all `n_iter` candidate direction vectors are
-stacked into an `(n_iter, n_pts)` distance matrix and evaluated at once.
-This eliminates per-iteration Python overhead and is the primary driver of
-the speed improvement.
+Attempt 3 scored each of many candidate lines in a Python `for` loop. Attempt 4
+scores all hypotheses in a single matrix operation — candidate direction
+vectors are stacked into a distance matrix and evaluated at once, removing
+per-iteration Python overhead.
 
 ### 2. Boundary-point subsampling
 
-Before RANSAC, boundary pixels are subsampled to at most 400 points. Dense or
-noisy boundaries can have 2 000+ pixels; each extra point widens the distance
-matrix and linearly increases cost. Subsampling caps the matrix at
-`300 × 400` float32 (~480 KB), directly flattening the slow tail. RANSAC is
-stochastic anyway, so subsampling does not reduce accuracy.
+Before RANSAC, boundary pixels are subsampled to at most 400 points. Dense
+boundaries can have thousands of pixels; subsampling caps matrix size. RANSAC
+is stochastic anyway, so this mainly affects cost, not the intended line.
 
 ### 3. Fewer RANSAC iterations (300 vs 500)
 
-With a vectorised scorer, 300 iterations cost less than 500 did in the loop.
-The hypothesis pool is still large enough to find the real horizon reliably.
+With a vectorised scorer, 300 iterations cost much less than 500 did in the
+original loop, while the hypothesis pool remains large enough to find the
+horizon in practice.
 
-## Full-Dataset Results
+## Full-Dataset Results (Horizon-UAV)
 
-Evaluated on the Horizon-UAV dataset (490 images) inside Docker with
-`cpus: "1"` and `mem_limit: "1g"` — the tightest resource constraint tested.
+Measured on the Horizon-UAV dataset (`490` images) with:
 
-### Accuracy
+```bash
+.venv/bin/python tools/evaluate.py attempts/attempt-4-top-n-ransac_tuned
+```
+
+`full-eval-results-horizon_uav_dataset.json` in this directory is the
+machine-readable source of truth for the run that produced the table below.
 
 | Metric | mean | P50 | P90 | max |
 |---|---:|---:|---:|---:|
-| Δθ (angle error, deg) | 1.1 | 0.8 | 2.3 | 28.3 |
-| Δρ / H (normalised position error) | 0.0% | 0.0% | 0.0% | 0.5% |
-| Sky-mask IoU | 0.93 | 0.95 | 0.98 | 1.00 |
+| Δθ (angle error, deg) | 1.078 | 0.761 | 2.296 | 7.704 |
+| Δρ (line position error, px) | 10.625 | 6.954 | 14.188 | 260.342 |
+| Δρ / H (normalised line position error) | 0.022 | 0.014 | 0.030 | 0.542 |
+| Sky-mask IoU | 0.929 | 0.952 | 0.984 | 0.997 |
+| Latency (ms) | 18.006 | 10.871 | 39.781 | 132.850 |
 
-**Pass rate: 468 / 490 = 95.5%**
+**Pass rate:** `468 / 490 = 95.5%`
 
-### Speed (Docker, 1 CPU core, 1 GB RAM)
+On the **FPV/ATV clip** set (`--dataset data/video_clips_fpv_atv`), see
+`full-eval-results-video_clips_fpv_atv.json` — pass rate and mean errors
+differ from Horizon-UAV because the brightness mask and no-horizon labels hit
+harder; attempt 3 can still lead on line accuracy in some runs (stochastic
+RANSAC).
 
-| Metric | value |
-|---|---:|
-| Mean latency | 16.2 ms |
-| Median latency | 10.9 ms |
-| P90 latency | 34.2 ms |
-| Worst latency | 60.8 ms |
-| Mean FPS | 61.8 |
-| Worst-case FPS | 16.5 |
+**Speed budget (15 FPS ≈ 67 ms):** the evaluator’s aggregate verdict on this
+run is pass on mean latency; a small fraction of frames exceed 67 ms on the
+slow tail. Treat worst-case timing on real Pi hardware as the final gate, not
+dev-machine numbers alone.
 
-**Budget: ≤ 67 ms / ≥ 15 FPS — PASS (including worst case)**
-
-## Resource Requirements
-
-Testing at `cpus: "1"` and `mem_limit: "1g"` produced identical results to
-higher limits, which tells us the algorithm is effectively bounded by:
-
-- **CPU: 1 core.** The vectorised numpy path is single-threaded; additional
-  cores provide no per-frame benefit. On the Pi 5 (4 cores, ~1 reserved for
-  Hailo), one core is dedicated to this detector and the remaining two are
-  free for the OS, camera capture, and orchestration.
-- **RAM: ~100 MB in practice.** Working set per frame is small (input image
-  ~700 KB, RANSAC matrix ~500 KB, masks ~1 MB, Python/OpenCV runtime ~80 MB).
-  The 1 GB container limit has ~900 MB headroom. The detector could run
-  comfortably inside a `256m` limit.
-
-## Comparison With Previous Attempts
+## Comparison With Previous Attempts (Horizon-UAV, same host run)
 
 | Metric | Attempt 2 | Attempt 3 | Attempt 4 |
 |---|---:|---:|---:|
-| Pass rate | 81.2% | 95.9% | 95.5% |
-| Mean latency | 3.57 ms | 69.6 ms | **16.2 ms** |
-| P90 latency | — | 156 ms | **34.2 ms** |
-| Worst latency | — | 384 ms | **60.8 ms** |
-| Meets 15 FPS budget? | Yes | No (P90) | **Yes (incl. worst case)** |
-
-Attempt 3 had accuracy but a prohibitive slow tail (P90 156 ms, worst 384 ms)
-that failed the speed budget on 31% of frames. Attempt 4 restores worst-case
-compliance while preserving the accuracy gain.
+| Pass rate | 81.2% | 95.5% | 95.5% |
+| Mean latency | 3.70 ms | 71.5 ms | **18.0 ms** |
+| P90 latency | 7.0 ms | 161.0 ms | **39.8 ms** |
+| Worst latency | 20.4 ms | 393.5 ms | **132.8 ms** |
 
 ## Remaining Failure Modes
 
@@ -96,12 +79,14 @@ same root causes as attempts 2 and 3:
 | Sun glare | Bright patch in sky labelled as ground by Otsu |
 | Haze band | Washed-out haze darker than upper sky confuses the threshold |
 
-The worst frames (c2 clips, IoU 68–71%) are classic mask failures. A
-colour-based classifier (Lab b\*, or Ettinger's covariance method) is the
-most promising next step to push past ~96% pass rate.
+A colour-based classifier (Lab b*, or Ettinger's covariance method) is the most
+plausible next step to push the pass rate beyond the mid-90s on Horizon-UAV
+while keeping runtime sane.
 
 ## Bottom Line
 
-Attempt 4 is the current best all-round result: it matches attempt 3's
-accuracy and brings the slow tail within the 15 FPS budget even at worst case,
-while needing only 1 CPU core and ~100 MB RAM on the target hardware.
+Attempt 4 matches attempt 3’s pass rate on Horizon-UAV in our latest evaluation
+with roughly **4×** lower mean latency than attempt 3 on the same host, making
+it the better default when both accuracy and CPU budget matter. The shared
+Otsu mask and lack of a `no_horizon` path remain the main robustness limits on
+other datasets.

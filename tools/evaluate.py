@@ -4,29 +4,38 @@ tools/evaluate.py — run an attempt's detector over a horizon dataset.
 Usage:
     .venv/bin/python tools/evaluate.py attempts/attempt-1-otsu-column-scan
     .venv/bin/python tools/evaluate.py attempts/attempt-2-rotation-invariant --limit 50
-    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_ukraine_atv
+    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_fpv_atv
     .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --seed 0
 
 Reports per-sample angular error, positional error (Hesse rho), and sky-mask IoU,
 plus aggregates, a pass rate, and the worst offenders.
 
-Datasets may include a has_horizon column (data/video_clips_ukraine_atv) or omit
+Datasets may include a has_horizon column (e.g. data/video_clips_fpv_atv) or omit
 it (data/horizon_uav_dataset, where every frame has a horizon). When present, the
 report adds a confusion matrix and pass-rate folds in the no-horizon agreement.
 
 The evaluator is metric-definition-heavy on purpose: see docs/evaluation-metrics.md
 for why we compare lines in Hesse normal form rather than via (slope, y-intercept).
+
+Writes one JSON file per (attempt, dataset) so runs do not overwrite:
+  attempts/<attempt>/full-eval-results-<dataset_dir_name>.json
+for example `full-eval-results-horizon_uav_dataset.json`.
+The file has run metadata and a `summary` object (aggregates, confusion matrix, worst-5
+filenames) — it does not list every frame.
 """
 
 import argparse
 import csv
 import importlib.util
 import inspect
+import json
 import math
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -239,6 +248,145 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None, 
 
 # --------------------------- reporting --------------------------- #
 
+def _passes_sample(r: SampleResult) -> bool:
+    if r.gt_has_horizon != r.pred_has_horizon:
+        return False
+    if not r.gt_has_horizon:
+        return True
+    return r.delta_theta_deg < PASS_DTHETA_DEG and r.delta_rho_norm < PASS_DRHO_NORM
+
+
+def _stats(values: list[float]) -> Optional[dict]:
+    if not values:
+        return None
+    arr = np.asarray(values, dtype=float)
+    return {
+        "mean": float(arr.mean()),
+        "median": float(np.percentile(arr, 50)),
+        "p90": float(np.percentile(arr, 90)),
+        "worst": float(arr.max()),
+    }
+
+
+def summarise_results(results: list[SampleResult]) -> dict:
+    ok = [r for r in results if not r.failed]
+    failed = [r for r in results if r.failed]
+    has_no_horizon_labels = any(not r.gt_has_horizon for r in results)
+
+    line_rows = [r for r in ok if r.delta_theta_deg is not None]
+    passed = sum(1 for r in ok if _passes_sample(r))
+    pass_total = len(results)
+    acc_rate = passed / pass_total if pass_total else 0.0
+    acc_verdict = "PASS" if acc_rate >= 0.95 else "WARN" if acc_rate >= 0.80 else "FAIL"
+
+    tp = sum(1 for r in ok if r.gt_has_horizon and r.pred_has_horizon)
+    fn = sum(1 for r in ok if r.gt_has_horizon and not r.pred_has_horizon)
+    fp = sum(1 for r in ok if not r.gt_has_horizon and r.pred_has_horizon)
+    tn = sum(1 for r in ok if not r.gt_has_horizon and not r.pred_has_horizon)
+
+    iou_vals = [r.iou for r in ok if r.iou is not None]
+    lat = [r.latency_ms for r in ok]
+    latency_stats = _stats(lat)
+    fps_stats = None
+    speed_verdict = "WARN"
+    pct_over_budget = None
+
+    if latency_stats is not None:
+        fps_stats = {
+            "mean": 1000 / latency_stats["mean"],
+            "median": 1000 / latency_stats["median"],
+            "p90": 1000 / latency_stats["p90"],
+            "worst": 1000 / latency_stats["worst"],
+        }
+        if latency_stats["mean"] <= LATENCY_BUDGET_MS and latency_stats["p90"] <= LATENCY_BUDGET_MS:
+            speed_verdict = "PASS"
+        elif latency_stats["mean"] <= LATENCY_BUDGET_MS:
+            speed_verdict = "WARN"
+        else:
+            speed_verdict = "FAIL"
+        pct_over_budget = sum(1 for v in lat if v > LATENCY_BUDGET_MS) / len(lat) * 100
+
+    return {
+        "counts": {
+            "total": len(results),
+            "evaluated": len(ok),
+            "failed": len(failed),
+            "line_scored": len(line_rows),
+        },
+        "has_no_horizon_labels": has_no_horizon_labels,
+        "confusion_matrix": {
+            "tp": tp,
+            "fn": fn,
+            "fp": fp,
+            "tn": tn,
+            "failed_gt_horizon": sum(1 for r in failed if r.gt_has_horizon),
+            "failed_gt_no_horizon": sum(1 for r in failed if not r.gt_has_horizon),
+        } if has_no_horizon_labels else None,
+        "accuracy": {
+            "verdict": acc_verdict,
+            "passed": passed,
+            "total": pass_total,
+            "pass_rate": acc_rate,
+            "pass_thresholds": {
+                "delta_theta_deg_lt": PASS_DTHETA_DEG,
+                "delta_rho_norm_lt": PASS_DRHO_NORM,
+            },
+            "angle_error_deg": _stats([r.delta_theta_deg for r in line_rows]),
+            "position_error_norm": _stats([r.delta_rho_norm for r in line_rows]),
+            "hesse_distance_px": _stats([r.delta_rho_px for r in line_rows]),
+        },
+        "mask_iou": _stats(iou_vals),
+        "speed": {
+            "verdict": speed_verdict,
+            "latency_budget_ms": LATENCY_BUDGET_MS,
+            "latency_ms": latency_stats,
+            "fps": fps_stats,
+            "pct_frames_over_budget": pct_over_budget,
+        },
+        "worst_frames_by_angle": [
+            {
+                "filename": r.filename,
+                "delta_theta_deg": r.delta_theta_deg,
+                "delta_rho_norm": r.delta_rho_norm,
+                "iou": r.iou,
+            }
+            for r in sorted(line_rows, key=lambda row: row.delta_theta_deg, reverse=True)[:5]
+        ],
+    }
+
+
+def _eval_results_json_path(attempt_dir: Path, dataset_dir: Path) -> Path:
+    """e.g. attempts/foo/full-eval-results-horizon_uav_dataset.json"""
+    name = dataset_dir.resolve().name
+    if not name or name in (".", ".."):
+        name = "dataset"
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", name) or "dataset"
+    return attempt_dir / f"full-eval-results-{safe}.json"
+
+
+def write_full_eval_results(
+    results: list[SampleResult],
+    attempt_dir: Path,
+    dataset_dir: Path,
+    limit: Optional[int],
+    seed: Optional[int],
+    wall_clock_s: float,
+) -> Path:
+    out_path = _eval_results_json_path(attempt_dir, dataset_dir)
+    payload = {
+        "attempt": attempt_dir.name,
+        "attempt_dir": str(attempt_dir),
+        "dataset_dir": str(dataset_dir),
+        "limit": limit,
+        "seed": seed,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "wall_clock_s": wall_clock_s,
+        "summary": summarise_results(results),
+    }
+    out_path.write_text(json.dumps(payload, indent=2) + "\n")
+    print(f"  wrote {out_path}")
+    return out_path
+
 def _stat_row(label, values, fmt, unit="", low_is_good=True):
     """Print one metric row: label  avg  median  9-in-10  worst."""
     arr = np.asarray(values)
@@ -398,6 +546,7 @@ def main():
     elapsed = time.perf_counter() - t_start
 
     print_report(results, attempt_name=args.attempt.name)
+    write_full_eval_results(results, args.attempt, args.dataset, args.limit, args.seed, elapsed)
     print(f"\n  total wall-clock time: {elapsed:.1f}s")
 
 
