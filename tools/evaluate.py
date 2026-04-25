@@ -16,11 +16,32 @@ import argparse
 import csv
 import importlib.util
 import math
+import os
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# ANSI colours — disabled automatically when stdout is not a TTY
+# (e.g. redirected to a file) or when NO_COLOR env var is set.
+# ---------------------------------------------------------------------------
+def _supports_color() -> bool:
+    return sys.stdout.isatty() and os.environ.get("NO_COLOR") is None
+
+class C:
+    """Terminal colour codes."""
+    if _supports_color():
+        PASS    = "\033[92m"   # bright green
+        FAIL    = "\033[91m"   # bright red
+        WARN    = "\033[93m"   # bright yellow
+        DIM     = "\033[2m"    # dim / grey
+        BOLD    = "\033[1m"
+        RESET   = "\033[0m"
+    else:
+        PASS = FAIL = WARN = DIM = BOLD = RESET = ""
 
 import cv2
 import numpy as np
@@ -161,7 +182,7 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
     total = len(labels)
     results: list[SampleResult] = []
     for i, row in enumerate(labels, 1):
-        print(f"\r  {i}/{total}", end="", flush=True)
+        print(f"\r{C.DIM}  {i}/{total}{C.RESET}", end="", flush=True)
         filename = row["filename"]
         slope = float(row["slope"])
         offset = float(row["offset"])
@@ -204,60 +225,130 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
 
 # --------------------------- reporting --------------------------- #
 
-def _pct(vals, p):
-    return float(np.percentile(vals, p)) if len(vals) else float("nan")
+LATENCY_BUDGET_MS = 1000 / 15   # 66.7 ms = 15 FPS
 
 
-def _row(label, values, fmt="{:8.3f}"):
+def _stat_row(label, values, fmt, unit="", gate=None, gate_passes=lambda v, g: v < g, low_is_good=True):
+    """Print one metric row: label  avg  median  9-in-10  worst  [gate note]."""
     arr = np.asarray(values)
-    mean = arr.mean()
-    p50 = np.percentile(arr, 50)
-    p90 = np.percentile(arr, 90)
-    vmax = arr.max()
+    avg  = float(arr.mean())
+    p50  = float(np.percentile(arr, 50))
+    p90  = float(np.percentile(arr, 90))
+    vmax = float(arr.max())
+    tail_label = "9-in-10 below" if low_is_good else "9-in-10 above"
     print(
-        f"  {label:<32s}"
-        f"  mean={fmt.format(mean)}"
-        f"  P50={fmt.format(p50)}"
-        f"  P90={fmt.format(p90)}"
-        f"  max={fmt.format(vmax)}"
+        f"  {label:<28s}"
+        f"  avg {fmt.format(avg)}{unit}"
+        f"   median {fmt.format(p50)}{unit}"
+        f"   {tail_label} {fmt.format(p90)}{unit}"
+        f"   worst {fmt.format(vmax)}{unit}"
     )
+
+
+def _verdict(label, passed: bool | None):
+    """Print a section header with a coloured PASS / FAIL / WARN badge."""
+    if passed is True:
+        colour, badge = C.PASS, "PASS"
+    elif passed is False:
+        colour, badge = C.FAIL, "FAIL"
+    else:
+        colour, badge = C.WARN, "WARN"
+    width = 42
+    print(f"\n{C.BOLD}{label:{width}s}{colour}[ {badge} ]{C.RESET}")
+    print(C.DIM + "-" * (width + 8) + C.RESET)
 
 
 def print_report(results: list[SampleResult], attempt_name: str):
-    ok = [r for r in results if not r.failed]
+    ok     = [r for r in results if not r.failed]
     failed = [r for r in results if r.failed]
-    n = len(results)
-    print(f"\n=== {attempt_name}  —  {len(ok)} ok / {len(failed)} failed / {n} total ===\n")
+    n      = len(results)
+
+    print(f"\n{C.BOLD}{'=' * 60}{C.RESET}")
+    print(f"  {C.BOLD}{attempt_name}{C.RESET}")
+    print(f"  {C.DIM}{len(ok)} frames evaluated" + (f"  ({len(failed)} could not be detected)" if failed else "") + C.RESET)
+    print(f"{C.BOLD}{'=' * 60}{C.RESET}")
+
     if not ok:
-        print("  all samples failed; nothing to aggregate.")
+        print("\n  No frames detected — nothing to report.")
         return
 
-    _row("Δθ (deg)",                 [r.delta_theta_deg for r in ok])
-    _row("Δρ (px, Hesse)",           [r.delta_rho_px for r in ok])
-    _row("Δρ / image_height",        [r.delta_rho_norm for r in ok])
-
-    iou_vals = [r.iou for r in ok if r.iou is not None]
-    if iou_vals:
-        _row("sky-mask IoU",         iou_vals)
-
-    _row("latency (ms)",             [r.latency_ms for r in ok])
-
-    passed = sum(
+    # ------------------------------------------------------------------ #
+    # ACCURACY
+    # ------------------------------------------------------------------ #
+    acc_passed_count = sum(
         1 for r in ok
         if r.delta_theta_deg < PASS_DTHETA_DEG and r.delta_rho_norm < PASS_DRHO_NORM
     )
+    acc_rate = acc_passed_count / len(ok)
+    _verdict("ACCURACY", acc_rate >= 0.95)
+
+    rate_colour = C.PASS if acc_rate >= 0.95 else C.WARN if acc_rate >= 0.80 else C.FAIL
     print(
-        f"\n  pass rate  (Δθ<{PASS_DTHETA_DEG:.0f}°  &  Δρ/H<{PASS_DRHO_NORM*100:.0f}%)  "
-        f"=  {passed}/{len(ok)}  ({passed/len(ok)*100:.1f}%)"
+        f"  {rate_colour}{acc_passed_count}/{len(ok)} frames ({acc_rate*100:.1f}%){C.RESET} meet both thresholds"
+        f"  {C.DIM}(angle < {PASS_DTHETA_DEG:.0f}°  and  position < {PASS_DRHO_NORM*100:.0f}% of frame height){C.RESET}\n"
     )
 
-    print("\n  worst 5 by Δθ:")
+    _stat_row("Horizon angle error",    [r.delta_theta_deg for r in ok], "{:.1f}", "°")
+    _stat_row("Horizon position error", [r.delta_rho_norm  for r in ok], "{:.1f}", "%",)
+
+    iou_vals = [r.iou for r in ok if r.iou is not None]
+    if iou_vals:
+        print()
+        _stat_row("Sky region overlap", iou_vals, "{:.2f}", "  (1.0 = perfect)")
+
+    # ------------------------------------------------------------------ #
+    # SPEED
+    # ------------------------------------------------------------------ #
+    lat = [r.latency_ms for r in ok]
+    avg_ms  = float(np.mean(lat))
+    p50_ms  = float(np.percentile(lat, 50))
+    p90_ms  = float(np.percentile(lat, 90))
+    max_ms  = float(np.max(lat))
+
+    avg_fps = 1000 / avg_ms
+    p50_fps = 1000 / p50_ms
+    p90_fps = 1000 / p90_ms   # slowest 10% are below this
+    min_fps = 1000 / max_ms
+
+    # Pass = average meets budget; warn = average passes but P90 does not
+    if avg_ms <= LATENCY_BUDGET_MS and p90_ms <= LATENCY_BUDGET_MS:
+        speed_verdict = True
+    elif avg_ms <= LATENCY_BUDGET_MS:
+        speed_verdict = None   # WARN
+    else:
+        speed_verdict = False
+
+    _verdict(f"SPEED  (target: >= 15 FPS  /  <= {LATENCY_BUDGET_MS:.0f} ms per frame)", speed_verdict)
+    print(
+        f"  {'Per-frame time':<28s}"
+        f"  avg {avg_ms:5.1f} ms"
+        f"   median {p50_ms:5.1f} ms"
+        f"   9-in-10 below {p90_ms:6.1f} ms"
+        f"   worst {max_ms:6.1f} ms"
+    )
+    print(
+        f"  {'In FPS':<28s}"
+        f"  avg {avg_fps:5.1f}    "
+        f"   median {p50_fps:5.1f}    "
+        f"   9-in-10 above {p90_fps:6.1f}    "
+        f"   worst {min_fps:6.1f}"
+    )
+    if speed_verdict is None:
+        pct_over = sum(1 for v in lat if v > LATENCY_BUDGET_MS) / len(lat) * 100
+        print(f"\n  {C.WARN}Note: {pct_over:.0f}% of frames exceed the {LATENCY_BUDGET_MS:.0f} ms budget.{C.RESET}")
+
+    # ------------------------------------------------------------------ #
+    # WORST FRAMES
+    # ------------------------------------------------------------------ #
+    print(f"\n\n{C.BOLD}WORST 5 FRAMES{C.RESET}  {C.DIM}(by angle error){C.RESET}")
+    print(C.DIM + "-" * 60 + C.RESET)
     for r in sorted(ok, key=lambda r: r.delta_theta_deg, reverse=True)[:5]:
-        iou_str = f"  IoU={r.iou:.3f}" if r.iou is not None else ""
+        iou_str = f"  sky overlap {r.iou:.0%}" if r.iou is not None else ""
+        angle_colour = C.FAIL if r.delta_theta_deg >= PASS_DTHETA_DEG else C.WARN
         print(
-            f"    {r.filename[:58]:58s}  "
-            f"Δθ={r.delta_theta_deg:6.2f}°  "
-            f"Δρ={r.delta_rho_px:7.2f}px"
+            f"  {C.DIM}{r.filename[:48]:48s}{C.RESET}"
+            f"  {angle_colour}angle off {r.delta_theta_deg:.1f}°{C.RESET}"
+            f"  position off {r.delta_rho_norm*100:.1f}%"
             f"{iou_str}"
         )
 
