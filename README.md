@@ -15,21 +15,36 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 
 ## Current Status
 
-The three attempts tell a clear story:
+The three attempts tell a clear story on the original Horizon-UAV benchmark:
 
 - `attempt-1-otsu-column-scan`: fastest, but brittle
 - `attempt-2-rotation-invariant`: much better line fitting, still mask-limited
 - `attempt-3-top-n-ransac`: best accuracy by far, much slower
 
-On the 490-image Horizon-UAV dataset:
+…and the story *inverts* on the Ukraine ATV FPV dataset, where every attempt fails and attempt 3 fails worst. The two datasets exercise different things, so we report them side by side.
 
-| Attempt | Pass rate | Mean angle error | Mean position error | Mean latency |
+**Horizon-UAV** (490 images, 480×480, every frame has a horizon):
+
+| Attempt | Pass rate | Mean Δθ | Mean Δρ | Mean latency |
 |---|---:|---:|---:|---:|
-| Attempt 1 | 62.4% | 10.461 deg | 70.744 px | 0.762 ms |
-| Attempt 2 | 81.2% | 7.313 deg | 36.700 px | 3.689 ms |
-| Attempt 3 | 95.9% | 1.067 deg | 10.102 px | 69.553 ms |
+| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.639 ms |
+| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.579 ms |
+| Attempt 3 | 95.7% | 1.113° | 10.458 px | 69.703 ms |
 
-The full breakdown lives in [attempt_comparison.md](./attempt_comparison.md).
+**Ukraine ATV FPV** (120 frames, 1920×1080, 110 horizon + 10 no-horizon):
+
+| Attempt | Pass rate | Mean Δθ (TP only) | Mean Δρ | Mean latency | Confusion (TP/FN/FP/TN) |
+|---|---:|---:|---:|---:|---:|
+| Attempt 1 | 3.3% | 14.039° | 361.246 px | 4.125 ms | 110 / 0 / 10 / 0 |
+| Attempt 2 | 0.0% | 13.900° | 362.192 px | 34.973 ms | 110 / 0 / 10 / 0 |
+| Attempt 3 | 0.0% | 82.802° | 1104.496 px | 562.579 ms | 110 / 0 / 10 / 0 |
+
+Two things to read carefully on the ATV row:
+
+- The 10 no-horizon frames are forced false positives — none of the current attempts implement the `no_horizon` return path the evaluator supports, so the maximum reachable pass rate on this set is `110/120 = 91.7%`, and the actual numbers are much lower than that because line accuracy collapses.
+- All three attempts share an Otsu brightness mask as their first stage, which assumes "sky is bright, ground is dark". FPV treeline / road footage breaks that assumption, so the boundary they're fitting isn't the real horizon. Attempt 3's RANSAC then locks confidently onto vertical artefacts (trees, road edges) — that's why its mean Δθ on ATV is ~83°, not single digits.
+
+The full breakdown, including per-attempt latency scaling and a detailed read of why the ranking inverts, lives in [attempt_comparison.md](./attempt_comparison.md).
 
 ## Quick Start
 
