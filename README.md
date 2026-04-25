@@ -65,6 +65,8 @@ Evaluate an attempt on the full dataset:
 .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac
 ```
 
+That also writes `attempts/<attempt>/full-eval-results.json` with the aggregate metrics and per-frame results.
+
 Use `--limit` for quick iteration:
 
 ```bash
