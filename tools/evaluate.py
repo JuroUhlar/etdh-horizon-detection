@@ -5,6 +5,7 @@ Usage:
     .venv/bin/python tools/evaluate.py attempts/attempt-1-otsu-column-scan
     .venv/bin/python tools/evaluate.py attempts/attempt-2-rotation-invariant --limit 50
     .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --dataset data/video_clips_ukraine_atv
+    .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac --seed 0
 
 Reports per-sample angular error, positional error (Hesse ρ), and sky-mask IoU,
 plus aggregates (mean / P50 / P90 / max), a pass rate, and the worst offenders.
@@ -20,6 +21,7 @@ for why we compare lines in Hesse normal form rather than via (slope, y-intercep
 import argparse
 import csv
 import importlib.util
+import inspect
 import math
 import sys
 import time
@@ -73,12 +75,17 @@ def normalise_output(raw):
       - "no_horizon" (str)                  — deliberate abstention (sky-only / ground-only).
       - {"no_horizon": True, "mask": ...}   — same, in dict form, with optional mask.
       - (slope_deg, intercept_px, mask)     — attempt 1 style.
+      - [{"line": ...}, ...]                — top-N detector output; first item is scored.
       - {"line": (vx, vy, x0, y0), ...}     — attempt 2 / 3 style.
     """
     if raw is None:
         return None, None, False
     if isinstance(raw, str) and raw == "no_horizon":
         return None, None, True
+    if isinstance(raw, list):
+        if not raw:
+            return None, None, False
+        return normalise_output(raw[0])
     if isinstance(raw, dict):
         if raw.get("no_horizon"):
             return None, raw.get("mask"), True
@@ -183,8 +190,17 @@ def _load_labels(csv_path: Path) -> list[dict]:
     return rows
 
 
-def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
+def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None, seed: Optional[int] = None):
     detect = load_detector(attempt_dir)
+    detect_params = inspect.signature(detect).parameters
+    supports_random_seed = "random_seed" in detect_params or any(
+        p.kind == inspect.Parameter.VAR_KEYWORD for p in detect_params.values()
+    )
+    if seed is not None and not supports_random_seed:
+        print(
+            f"  WARN: {attempt_dir.name} does not accept random_seed; --seed is ignored",
+            file=sys.stderr,
+        )
 
     labels = _load_labels(dataset_dir / "label.csv")
     if limit is not None:
@@ -203,7 +219,7 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
         H, W = img.shape[:2]
 
         t0 = time.perf_counter()
-        raw = detect(img)
+        raw = detect(img, random_seed=seed) if seed is not None and supports_random_seed else detect(img)
         latency_ms = (time.perf_counter() - t0) * 1000
 
         line_pred, mask_pred, pred_no_horizon = normalise_output(raw)
@@ -345,9 +361,10 @@ def main():
     p.add_argument("attempt", type=Path, help="Path to an attempt folder, e.g. attempts/attempt-2-rotation-invariant")
     p.add_argument("--dataset", type=Path, default=DEFAULT_DATASET, help="Path to Horizon-UAV dataset root")
     p.add_argument("--limit", type=int, default=None, help="Only evaluate the first N samples (for quick iteration)")
+    p.add_argument("--seed", type=int, default=None, help="Seed passed to detectors that expose random_seed")
     args = p.parse_args()
 
-    results = evaluate(args.attempt, args.dataset, limit=args.limit)
+    results = evaluate(args.attempt, args.dataset, limit=args.limit, seed=args.seed)
     print_report(results, attempt_name=args.attempt.name)
 
 

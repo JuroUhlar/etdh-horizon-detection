@@ -78,6 +78,10 @@ The pass rate compounds: a frame passes iff `gt_has_horizon == pred_has_horizon`
 
 Datasets that don't include `has_horizon` (e.g. `data/horizon_uav_dataset/label.csv`, which is a byte-identical upstream mirror) are loaded as if every row were `has_horizon=true`. The confusion matrix is then trivial and is suppressed in the report.
 
+## Reproducibility for stochastic detectors
+
+Most detectors in this repo are deterministic, but `attempt-3-top-n-ransac` samples random RANSAC hypotheses. `tools/evaluate.py` therefore exposes `--seed <int>` and passes it through as `random_seed` when the detector supports that parameter. If omitted, stochastic detectors are evaluated unseeded and their aggregate metrics may wobble slightly between runs.
+
 ## Aggregate statistics
 
 Per-sample errors are aggregated into:

@@ -28,6 +28,7 @@ All numbers below are from:
 ```bash
 .venv/bin/python tools/evaluate.py <attempt-dir>                                    # default: Horizon-UAV
 .venv/bin/python tools/evaluate.py <attempt-dir> --dataset data/video_clips_ukraine_atv
+.venv/bin/python tools/evaluate.py <attempt-dir> --seed 0                          # pin stochastic detectors
 ```
 
 The two datasets stress very different things, so we report them side by side rather than averaging — the takeaways are not the same.
@@ -46,7 +47,7 @@ The two datasets stress very different things, so we report them side by side ra
 | Mean Sky-mask IoU | 0.926 | 0.929 | 0.929 |
 | Mean latency | 0.639 ms | 3.579 ms | 69.703 ms |
 
-Attempt 3's mean Δθ wobbles slightly between runs (it's the only stochastic attempt — RANSAC's hypothesis sampling is seeded per frame but not across the run), so re-running is expected to give numbers within ~0.05° of these.
+Attempt 3 is the only stochastic attempt. If you run the commands above without `--seed`, its metrics will wobble slightly from run to run; pass `--seed 0` to pin an exact result when reproducing a table.
 
 ### Ukraine ATV FPV (`120` labelled frames, 1920×1080, 110 horizon + 10 no-horizon)
 

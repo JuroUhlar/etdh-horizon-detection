@@ -92,7 +92,7 @@ The default preview pacing is `0.5s` per frame (`2 fps`). Override it with `--fr
 
 ## Annotating a New Dataset
 
-`tools/annotate_horizon.py` is a small OpenCV GUI for hand-labelling horizon lines on a folder of images. It writes `label.csv` in the same `filename,slope,offset` schema as `data/horizon_uav_dataset/label.csv`, so labels produced this way drop straight into `tools/evaluate.py` without any conversion step.
+`tools/annotate_horizon.py` is a small OpenCV GUI for hand-labelling horizon lines on a folder of images. It writes a 4-column `label.csv` (`filename,has_horizon,slope,offset`), and `tools/evaluate.py` reads both that schema and the upstream 3-column Horizon-UAV schema without any conversion step.
 
 Run it against the default dataset (`data/video_clips_ukraine_atv/`):
 
@@ -129,8 +129,9 @@ Other flags:
 
 - `--relabel` — iterate over all images, including ones already in `label.csv` (the prior line is shown in magenta so you can decide whether to overwrite or `s`-skip).
 - `--start <i>` — jump to index `i` in the sorted image list, useful for resuming partway in.
+- `--upgrade-legacy-schema` — allow rewriting a legacy 3-column `label.csv` (such as `data/horizon_uav_dataset/label.csv`) into the 4-column format.
 
-By default, already-labelled images are skipped, and `label.csv` is rewritten atomically after every save, so you can stop and resume freely without losing progress.
+By default, already-labelled images are skipped, and `label.csv` is rewritten atomically after every save, so you can stop and resume freely without losing progress. Existing legacy 3-column CSVs are treated as read-only unless you pass `--upgrade-legacy-schema`; this keeps the upstream Horizon-UAV mirror byte-identical by default.
 
 The on-disk convention is a superset of the upstream Horizon-UAV labels:
 
@@ -140,7 +141,7 @@ foo.jpg,true,-0.128,0.323
 bar.jpg,false,,                 # sky-only / ground-only frame
 ```
 
-For horizon rows, `slope = dy/dx` in raw pixels and `offset = y_intercept_px / image_height`, exactly as in the upstream dataset — see [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md#labelcsv-format) for the full derivation. The upstream `data/horizon_uav_dataset/label.csv` is byte-identical to upstream and lacks the `has_horizon` column; loaders treat its rows as `has_horizon=true`.
+For horizon rows, `slope = dy/dx` in raw pixels and `offset = y_intercept_px / image_height`, exactly as in the upstream dataset — see [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md#labelcsv-format) for the full derivation. The upstream `data/horizon_uav_dataset/label.csv` is byte-identical to upstream and lacks the `has_horizon` column; loaders treat its rows as `has_horizon=true`, and the annotator will not rewrite it unless you pass `--upgrade-legacy-schema`.
 
 ## Repository Layout
 
@@ -152,7 +153,7 @@ attempts/
 data/
   horizon_uav_dataset/         # 490 labelled images + masks + label.csv
   samples/                     # 4 manual stress-test images, especially rotation edge cases
-  video_clips_ukraine_atv/     # FPV clips + 121 extracted frames; label.csv built with annotate_horizon.py
+  video_clips_ukraine_atv/     # FPV clips + 120 extracted frames; label.csv built with annotate_horizon.py
 docs/
   evaluation-metrics.md
   research-horizon-detection.md
@@ -179,6 +180,7 @@ Accepted return shapes are:
 - `{"no_horizon": True, "mask": mask}` — same, in dict form, with optional sky mask
 - `(slope_deg, intercept_px, mask)` for the simple baseline style
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
+- `[{"line": ...}, ...]` for top-N detectors; the evaluator scores the first candidate
 
 This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the three current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
 
@@ -215,7 +217,7 @@ The current attempts in this repo do not do either — they output a horizon lin
 
 - `data/horizon_uav_dataset/` is the main benchmark and includes images, land/sky masks, and `label.csv`.
 - `data/samples/` is a tiny manual stress set for rotated or near-vertical cases that the main dataset does not cover well.
-- `data/video_clips_ukraine_atv/` holds short FPV clips (`clips/`) plus 121 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow the same schema as the main benchmark.
+- `data/video_clips_ukraine_atv/` holds short FPV clips (`clips/`) plus 120 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow a superset of the main benchmark schema.
 - The dataset mirror has its own README at [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md).
 
 ## If You Add Another Attempt

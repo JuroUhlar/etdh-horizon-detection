@@ -3,19 +3,23 @@ tools/annotate_horizon.py — interactive horizon-line annotator.
 
 Click two points on the horizon in each image; the tool fits the line
 y = slope*x + c in original-image pixel space and writes the result to
-label.csv. Schema (a superset of data/horizon_uav_dataset/label.csv,
-which is missing the has_horizon column — old 3-column CSVs are read
-back as has_horizon=true and rewritten in the 4-column form on save):
+label.csv. Default output schema:
 
     filename,has_horizon,slope,offset
     foo.jpg,true,<dy/dx in px>,<c / image_height>
     bar.jpg,false,,                              # all-sky or all-ground frame
+
+Legacy 3-column CSVs (like data/horizon_uav_dataset/label.csv) are read
+back as has_horizon=true, but are NOT rewritten unless
+--upgrade-legacy-schema is passed explicitly. That protects the upstream
+mirror from accidental format changes.
 
 Usage:
     .venv/bin/python tools/annotate_horizon.py
     .venv/bin/python tools/annotate_horizon.py --dataset data/video_clips_ukraine_atv
     .venv/bin/python tools/annotate_horizon.py --relabel       # revisit already-labeled images
     .venv/bin/python tools/annotate_horizon.py --start 42      # jump to index 42
+    .venv/bin/python tools/annotate_horizon.py --dataset data/horizon_uav_dataset --upgrade-legacy-schema
 
 Keys:
     left-click x2  define horizon (first point, second point)
@@ -43,14 +47,14 @@ MAX_DISPLAY_W = 1600
 MAX_DISPLAY_H = 900
 
 
-def load_existing_labels(csv_path: Path) -> dict[str, dict]:
+def load_existing_labels(csv_path: Path) -> tuple[dict[str, dict], bool]:
     """Read label.csv into {filename: {"has_horizon", "slope", "offset"}}.
 
     Backward-compatible with the 3-column schema (filename,slope,offset):
     rows lacking a has_horizon column are loaded as has_horizon=true.
     """
     if not csv_path.exists():
-        return {}
+        return {}, False
     out: dict[str, dict] = {}
     with csv_path.open() as f:
         reader = csv.DictReader(f)
@@ -65,7 +69,7 @@ def load_existing_labels(csv_path: Path) -> dict[str, dict]:
                 }
             else:
                 out[row["filename"]] = {"has_horizon": False, "slope": None, "offset": None}
-    return out
+    return out, has_col
 
 
 def write_labels(csv_path: Path, labels: dict[str, dict]) -> None:
@@ -175,7 +179,7 @@ def compute_slope_offset(
     return slope, offset
 
 
-def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
+def annotate(dataset_dir: Path, relabel: bool, start_index: int, upgrade_legacy_schema: bool) -> None:
     images_dir = dataset_dir / "images"
     csv_path = dataset_dir / "label.csv"
 
@@ -184,7 +188,12 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
         print(f"No images found in {images_dir}")
         return
 
-    labels = load_existing_labels(csv_path)
+    labels, has_horizon_col = load_existing_labels(csv_path)
+    if csv_path.exists() and not has_horizon_col and not upgrade_legacy_schema:
+        raise SystemExit(
+            "Refusing to rewrite legacy 3-column label.csv without --upgrade-legacy-schema. "
+            "This keeps upstream mirrors byte-identical by default."
+        )
     print(f"Loaded {len(labels)} existing labels from {csv_path}")
     print(f"Found {len(image_paths)} images in {images_dir}")
 
@@ -300,8 +309,6 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int) -> None:
 
                 cv2.imshow(WINDOW_NAME, canvas)
                 state["needs_redraw"] = False
-                prior_drawn_once = True  # only the very first redraw needs to render the prior line
-
             key = cv2.waitKey(20) & 0xFF
 
             # No key pressed; loop again to pick up mouse moves.
@@ -371,8 +378,10 @@ def main() -> None:
                         help="iterate over all images, including ones already in label.csv")
     parser.add_argument("--start", type=int, default=0,
                         help="start at this index in the sorted image list")
+    parser.add_argument("--upgrade-legacy-schema", action="store_true",
+                        help="allow rewriting a legacy 3-column label.csv into the 4-column format")
     args = parser.parse_args()
-    annotate(args.dataset, args.relabel, args.start)
+    annotate(args.dataset, args.relabel, args.start, args.upgrade_legacy_schema)
 
 
 if __name__ == "__main__":
