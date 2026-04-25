@@ -22,6 +22,7 @@ ATTEMPTS=(
   attempts/attempt-2-rotation-invariant
   attempts/attempt-3-top-n-ransac
   attempts/attempt-4-top-n-ransac_tuned
+  attempts/attempt-7-multicue-ettinger
 )
 
 EVAL_ARGS=("$@")
@@ -58,6 +59,7 @@ attempts = [
     "attempt-2-rotation-invariant",
     "attempt-3-top-n-ransac",
     "attempt-4-top-n-ransac_tuned",
+    "attempt-7-multicue-ettinger",
 ]
 
 PASS_FPS = 15.0
