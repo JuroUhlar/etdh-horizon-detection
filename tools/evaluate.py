@@ -63,6 +63,10 @@ def normalise_output(raw):
     """
     if raw is None:
         return None, None
+    if isinstance(raw, list):
+        if not raw:
+            return None, None
+        return raw[0]["line"], raw[0].get("mask")
     if isinstance(raw, dict):
         return raw["line"], raw.get("mask")
     if isinstance(raw, tuple) and len(raw) == 3:
@@ -154,8 +158,10 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
     if limit is not None:
         labels = labels[:limit]
 
+    total = len(labels)
     results: list[SampleResult] = []
-    for row in labels:
+    for i, row in enumerate(labels, 1):
+        print(f"\r  {i}/{total}", end="", flush=True)
         filename = row["filename"]
         slope = float(row["slope"])
         offset = float(row["offset"])
@@ -192,6 +198,7 @@ def evaluate(attempt_dir: Path, dataset_dir: Path, limit: Optional[int] = None):
 
         results.append(SampleResult(filename, d_theta, d_rho, d_rho_norm, iou_val, latency_ms, failed=False))
 
+    print()  # newline after progress
     return results
 
 
@@ -262,8 +269,12 @@ def main():
     p.add_argument("--limit", type=int, default=None, help="Only evaluate the first N samples (for quick iteration)")
     args = p.parse_args()
 
+    t_start = time.perf_counter()
     results = evaluate(args.attempt, args.dataset, limit=args.limit)
+    elapsed = time.perf_counter() - t_start
+
     print_report(results, attempt_name=args.attempt.name)
+    print(f"\n  total wall-clock time: {elapsed:.1f}s")
 
 
 if __name__ == "__main__":
