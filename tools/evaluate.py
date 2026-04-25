@@ -239,9 +239,10 @@ def print_report(results: list[SampleResult], attempt_name: str):
         1 for r in ok
         if r.delta_theta_deg < PASS_DTHETA_DEG and r.delta_rho_norm < PASS_DRHO_NORM
     )
+    pass_total = len(results)
     print(
         f"\n  pass rate  (Δθ<{PASS_DTHETA_DEG:.0f}°  &  Δρ/H<{PASS_DRHO_NORM*100:.0f}%)  "
-        f"=  {passed}/{len(ok)}  ({passed/len(ok)*100:.1f}%)"
+        f"=  {passed}/{pass_total}  ({passed/pass_total*100:.1f}%)"
     )
 
     print("\n  worst 5 by Δθ:")
