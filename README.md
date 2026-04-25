@@ -7,8 +7,10 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 - three classical computer-vision attempts under `attempts/`
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
+- a Ukraine ATV FPV clip set under `data/video_clips_ukraine_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
 - an evaluator in `tools/evaluate.py`
 - visual rendering utilities in `tools/render_outputs.py` and `tools/stitch_video.py`
+- an interactive annotator in `tools/annotate_horizon.py` for labelling new frame sets in the same `label.csv` schema
 - notes in `docs/` plus a plain-language comparison in `attempt_comparison.md`
 
 ## Current Status
@@ -73,6 +75,48 @@ You can also restitch any frame directory manually:
 
 The default preview pacing is `0.5s` per frame (`2 fps`). Override it with `--frame-duration <seconds>`.
 
+## Annotating a New Dataset
+
+`tools/annotate_horizon.py` is a small OpenCV GUI for hand-labelling horizon lines on a folder of images. It writes `label.csv` in the same `filename,slope,offset` schema as `data/horizon_uav_dataset/label.csv`, so labels produced this way drop straight into `tools/evaluate.py` without any conversion step.
+
+Run it against the default dataset (`data/video_clips_ukraine_atv/`):
+
+```bash
+.venv/bin/python tools/annotate_horizon.py
+```
+
+Or point it at any directory containing an `images/` subfolder:
+
+```bash
+.venv/bin/python tools/annotate_horizon.py --dataset data/my_new_dataset
+```
+
+Workflow per image:
+
+1. Left-click two points along the horizon. The line is extended to the image borders so you can sanity-check the geometry before saving.
+2. Press `n` (or Enter) to save the label and advance.
+3. The header bar shows the current `slope` and `offset` so you see exactly what will be written.
+
+Keys:
+
+| Key | Action |
+|---|---|
+| `n` / Enter | save current label and advance |
+| `u` | undo last click |
+| `r` | reset both points |
+| `b` | go back to previous image (does not erase its label) |
+| `s` | skip without labelling |
+| `q` / Esc | save state and quit |
+
+Other flags:
+
+- `--relabel` — iterate over all images, including ones already in `label.csv` (the prior line is shown in magenta so you can decide whether to overwrite or `s`-skip).
+- `--start <i>` — jump to index `i` in the sorted image list, useful for resuming partway in.
+
+By default, already-labelled images are skipped, and `label.csv` is rewritten atomically after every save, so you can stop and resume freely without losing progress.
+
+The on-disk convention is identical to the upstream Horizon-UAV labels: `slope = dy/dx` in raw pixels and `offset = y_intercept_px / image_height`. See [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md#labelcsv-format) for the full derivation.
+
 ## Repository Layout
 
 ```text
@@ -81,8 +125,9 @@ attempts/
   attempt-2-rotation-invariant/
   attempt-3-top-n-ransac/
 data/
-  horizon_uav_dataset/   # 490 labelled images + masks + label.csv
-  samples/               # 4 manual stress-test images, especially rotation edge cases
+  horizon_uav_dataset/         # 490 labelled images + masks + label.csv
+  samples/                     # 4 manual stress-test images, especially rotation edge cases
+  video_clips_ukraine_atv/     # FPV clips + 121 extracted frames; label.csv built with annotate_horizon.py
 docs/
   evaluation-metrics.md
   research-horizon-detection.md
@@ -91,6 +136,7 @@ tools/
   evaluate.py
   render_outputs.py
   stitch_video.py
+  annotate_horizon.py
 ```
 
 ## Detector Contract
@@ -126,6 +172,7 @@ Details are in [docs/evaluation-metrics.md](./docs/evaluation-metrics.md).
 
 - `data/horizon_uav_dataset/` is the main benchmark and includes images, land/sky masks, and `label.csv`.
 - `data/samples/` is a tiny manual stress set for rotated or near-vertical cases that the main dataset does not cover well.
+- `data/video_clips_ukraine_atv/` holds short FPV clips (`clips/`) plus 121 extracted frames (`images/`); labels in `label.csv` are produced by `tools/annotate_horizon.py` and follow the same schema as the main benchmark.
 - The dataset mirror has its own README at [data/horizon_uav_dataset/README.md](./data/horizon_uav_dataset/README.md).
 
 ## If You Add Another Attempt
