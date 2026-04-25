@@ -191,7 +191,7 @@ def render_outputs(
         if index == 1 or index == total or index % 25 == 0:
             print(f"[{index:>3}/{total}] rendered {output_path.name}")
 
-    frame_count, _, _ = stitch_frames_to_video(
+    frame_count, _, _, _ = stitch_frames_to_video(
         frames_dir,
         video_path,
         frame_duration_s=frame_duration_s,

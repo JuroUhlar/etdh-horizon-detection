@@ -13,6 +13,7 @@ import cv2
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 DEFAULT_FRAME_DURATION_S = 0.5
+DEFAULT_CODEC_CANDIDATES = ("avc1", "mp4v")
 
 
 def list_frames(frames_dir: Path) -> list[Path]:
@@ -27,11 +28,24 @@ def list_frames(frames_dir: Path) -> list[Path]:
     return frames
 
 
+def open_video_writer(output_path: Path, fps: float, width: int, height: int):
+    for codec_name in DEFAULT_CODEC_CANDIDATES:
+        fourcc = cv2.VideoWriter_fourcc(*codec_name)
+        writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+        if writer.isOpened():
+            return writer, codec_name
+        writer.release()
+    raise RuntimeError(
+        f"Could not open video writer for {output_path} with any of: "
+        f"{', '.join(DEFAULT_CODEC_CANDIDATES)}"
+    )
+
+
 def stitch_frames_to_video(
     frames_dir: Path,
     output_path: Path,
     frame_duration_s: float = DEFAULT_FRAME_DURATION_S,
-) -> tuple[int, tuple[int, int], float]:
+) -> tuple[int, tuple[int, int], float, str]:
     frames = list_frames(frames_dir)
     first = cv2.imread(str(frames[0]))
     if first is None:
@@ -44,14 +58,7 @@ def stitch_frames_to_video(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fps = 1.0 / frame_duration_s
 
-    writer = cv2.VideoWriter(
-        str(output_path),
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (width, height),
-    )
-    if not writer.isOpened():
-        raise RuntimeError(f"Could not open video writer for: {output_path}")
+    writer, codec_name = open_video_writer(output_path, fps, width, height)
 
     try:
         count = 0
@@ -66,7 +73,7 @@ def stitch_frames_to_video(
     finally:
         writer.release()
 
-    return count, (width, height), fps
+    return count, (width, height), fps, codec_name
 
 
 def main():
@@ -87,14 +94,14 @@ def main():
     args = parser.parse_args()
 
     output_path = args.out or args.frames_dir.parent / f"{args.frames_dir.name}.mp4"
-    count, (width, height), fps = stitch_frames_to_video(
+    count, (width, height), fps, codec_name = stitch_frames_to_video(
         args.frames_dir,
         output_path,
         frame_duration_s=args.frame_duration,
     )
     print(
         f"stitched {count} frames into {output_path} "
-        f"({width}x{height}, {args.frame_duration:.2f}s/frame, {fps:.2f} fps)"
+        f"({width}x{height}, {args.frame_duration:.2f}s/frame, {fps:.2f} fps, codec={codec_name})"
     )
 
 
