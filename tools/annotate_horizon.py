@@ -28,7 +28,7 @@ Keys:
     u              undo last click
     r              reset both points
     b              go back to previous image (does not erase its label)
-    s              skip (advance without saving a label for this image)
+    s              skip / keep current label and advance
     q / Esc        save state and quit
 """
 
@@ -89,9 +89,10 @@ def write_labels(csv_path: Path, labels: dict[str, dict]) -> None:
 
 def fit_to_window(img: np.ndarray) -> tuple[np.ndarray, float]:
     h, w = img.shape[:2]
-    scale = min(MAX_DISPLAY_W / w, MAX_DISPLAY_H / h, 1.0)
-    if scale < 1.0:
-        disp = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    scale = min(MAX_DISPLAY_W / w, MAX_DISPLAY_H / h)
+    if abs(scale - 1.0) > 1e-6:
+        interpolation = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LINEAR
+        disp = cv2.resize(img, (int(round(w * scale)), int(round(h * scale))), interpolation=interpolation)
     else:
         disp = img.copy()
     return disp, scale
@@ -277,11 +278,14 @@ def annotate(dataset_dir: Path, relabel: bool, start_index: int, upgrade_legacy_
                     )
                 elif prior is not None and not state["points_disp"]:
                     if prior["has_horizon"]:
-                        sub = f"prior: slope={prior['slope']:+.4f}  offset={prior['offset']:+.4f}  (click to overwrite)"
+                        sub = (
+                            f"prior: slope={prior['slope']:+.4f}  offset={prior['offset']:+.4f}  "
+                            "click to overwrite  |  s=keep  |  x=replace with NO HORIZON"
+                        )
                     else:
-                        sub = "prior: NO HORIZON  (click to overwrite, or x to keep)"
+                        sub = "prior: NO HORIZON  click to overwrite  |  s=keep  |  x=keep as NO HORIZON"
                 else:
-                    sub = "click 2 pts  |  n=save  x=no-horizon  u=undo  r=reset  b=back  s=skip  q=quit"
+                    sub = "click 2 pts  |  n=save  x=no-horizon  u=undo  r=reset  b=back  s=keep/skip  q=quit"
 
                 header = f"[{cursor + 1}/{len(queue_indices)}]  idx={idx}  {path.name}  ({w_full}x{h_full})"
 
