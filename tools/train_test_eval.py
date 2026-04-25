@@ -166,6 +166,21 @@ def _fps(latencies_ms: list[float], warmup: int = 0) -> Optional[float]:
 # Core evaluation loop
 # ---------------------------------------------------------------------------
 
+def _load_labels(dataset_dir: Path) -> list[dict]:
+    """Load label.csv, auto-detecting format and dropping no-horizon rows.
+
+    Supports two formats:
+      - horizon_uav:     filename, slope, offset
+      - ukraine_atv:     filename, has_horizon, slope, offset
+    Rows where has_horizon == "false" are dropped (no ground truth to score).
+    """
+    with (dataset_dir / "label.csv").open() as f:
+        rows = list(csv.DictReader(f))
+    if rows and "has_horizon" in rows[0]:
+        rows = [r for r in rows if r["has_horizon"].lower() == "true"]
+    return rows
+
+
 def run_split_eval(
     attempt_dir: Path,
     dataset_dir: Path,
@@ -178,8 +193,7 @@ def run_split_eval(
     """
     detect = _ev.load_detector(attempt_dir)
 
-    with (dataset_dir / "label.csv").open() as f:
-        all_labels = list(csv.DictReader(f))
+    all_labels = _load_labels(dataset_dir)
 
     train_rows, test_rows = stratified_split(all_labels, TEST_FRACTION, seed)
     ordered = [("train", row) for row in train_rows] + [("test", row) for row in test_rows]
@@ -205,7 +219,7 @@ def run_split_eval(
         raw = detect(img)
         latency_ms = (time.perf_counter() - t0) * 1000
 
-        line_pred, mask_pred, _pred_no_horizon = _ev.normalise_output(raw)
+        line_pred, mask_pred, _ = _ev.normalise_output(raw)
         ab = _angle_bin(slope)
         ob = _offset_bin(offset)
 
