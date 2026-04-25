@@ -46,28 +46,28 @@ Measured on the Horizon-UAV dataset (`490` images) with:
 
 | Metric | mean | P50 | P90 | max |
 |---|---:|---:|---:|---:|
-| Δθ (angle error, deg) | 1.067 | 0.737 | 2.171 | 7.560 |
-| Δρ (line position error, px) | 10.102 | 7.007 | 14.007 | 260.127 |
-| Δρ / H (normalised line position error) | 0.021 | 0.015 | 0.029 | 0.542 |
+| Δθ (angle error, deg) | 1.091 | 0.755 | 2.331 | 7.613 |
+| Δρ (line position error, px) | 10.201 | 7.057 | 14.100 | 259.898 |
+| Δρ / H (normalised line position error) | 0.021 | 0.015 | 0.029 | 0.541 |
 | Sky-mask IoU | 0.929 | 0.952 | 0.984 | 0.997 |
-| Latency (ms) | 69.553 | 41.805 | 156.164 | 384.337 |
+| Latency (ms) | 71.502 | 41.485 | 161.023 | 393.494 |
 
-**Pass rate:** `470 / 490 = 95.9%`
+**Pass rate:** `468 / 490 = 95.5%` (RANSAC is stochastic — re-run with `--seed` for bit-identical output.)
 
 ## Improvement Over Attempt 2
 
 | Metric | Attempt 2 | Attempt 3 | Change |
 |---|---:|---:|---:|
-| Pass rate | 81.2% | 95.9% | +14.7 pts |
-| Mean Δθ | 7.313° | 1.067° | much better |
-| Mean Δρ | 36.700 px | 10.102 px | much better |
-| Mean latency | 3.689 ms | 69.553 ms | much slower |
+| Pass rate | 81.2% | 95.5% | +14.3 pts |
+| Mean Δθ | 7.313° | 1.091° | much better |
+| Mean Δρ | 36.700 px | 10.201 px | much better |
+| Mean latency | 3.703 ms | 71.502 ms | much slower |
 
 ## What These Numbers Mean
 
 - This is the most accurate attempt so far by a wide margin.
-- The pass rate reaches `95.9%`, which is strong on this dataset.
-- The angle error is now very low even in the tail: P90 `Δθ` is only `2.171°`.
+- The pass rate reaches `95.5%` in this run, which is strong on this dataset.
+- The angle error is now very low even in the tail: P90 `Δθ` is about `2.3°`.
 - The sky-mask IoU stays essentially unchanged from attempt 2, which tells us the gain came from the candidate search and refit strategy, not from a better mask.
 - The tradeoff is speed. This is far slower than attempts 1 and 2.
 
@@ -77,40 +77,8 @@ In plain terms: attempt 3 is much better at finding the right straight line, but
 
 - **Speed**: RANSAC plus clustering plus refitting is much heavier than a single fit.
 - **Shared mask limitations**: because the mask step is still the same as attempt 2, scenes with fundamentally wrong sky/ground separation can still fail.
-- **Some large outliers remain**: max `Δρ / H` is still `0.542`, so a few frames are still badly off.
+- **Some large outliers remain**: max `Δρ / H` is still near `0.54` in the long tail, so a few frames are still badly off.
 
 ## Bottom Line
 
 Attempt 3 is the accuracy leader. If the priority is benchmark score on this dataset, this is the current best attempt. If the priority is lightweight runtime, the cost is substantial and needs to be judged against the deployment target.
-
-## Train/Test Evaluation
-
-seed=42 | train=388 | test=102
-
-| Metric | Train | Test |
-|---|---|---|
-| N evaluated | 388 | 102 |
-| N failed | 0 | 0 |
-| FPS (excl. 10-frame warmup) | 15.0 | 13.6 |
-| Mean latency (ms) | 66.82 | 73.41 |
-| Mean angle error (°) | 1.14 | 0.85 |
-| P90 angle error (°) | 2.35 | 2.09 |
-| Mean position error (%H) | 2.37 | 1.53 |
-| P90 position error (%H) | 2.96 | 2.82 |
-| Mean IoU | 0.928 | 0.931 |
-| Pass rate (Δθ<5° & Δρ<5%H) | 95.4% | 97.1% |
-| mAP (threshold sweep) | 0.8080 | 0.8321 |
-
-**mAP threshold breakdown:**
-
-| Δθ max | Δρ/H max | Train precision | Test precision |
-|---|---|---|---|
-| 1° | 1% | 0.124 | 0.186 |
-| 2° | 2% | 0.595 | 0.618 |
-| 3° | 3% | 0.889 | 0.902 |
-| 5° | 5% | 0.954 | 0.971 |
-| 7° | 7% | 0.964 | 0.980 |
-| 10° | 10% | 0.974 | 1.000 |
-| 15° | 15% | 0.982 | 1.000 |
-| 20° | 20% | 0.982 | 1.000 |
-

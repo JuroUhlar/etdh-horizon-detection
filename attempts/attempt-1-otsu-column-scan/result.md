@@ -49,7 +49,7 @@ Measured on the Horizon-UAV dataset (`490` images) with:
 | Δρ (line position error, px) | 70.744 | 10.990 | 274.909 | 538.325 |
 | Δρ / H (normalised line position error) | 0.147 | 0.023 | 0.573 | 1.122 |
 | Sky-mask IoU | 0.926 | 0.950 | 0.984 | 0.997 |
-| Latency (ms) | 0.762 | 0.660 | 0.786 | 17.202 |
+| Latency (ms) | 0.757 | 0.674 | 0.743 | 20.664 |
 
 **Pass rate:** `306 / 490 = 62.4%`
 
@@ -58,7 +58,7 @@ Measured on the Horizon-UAV dataset (`490` images) with:
 - The median frame is actually decent. P50 angle error is only `1.415°`.
 - The bad news is the tail. P90 angle error is `36.793°`, which means a meaningful chunk of frames are way off.
 - The sky mask overlap is already high (`0.926` mean IoU), so the segmentation is often roughly right even when the fitted line is bad.
-- It is extremely fast: `0.762 ms` mean latency on the dev machine.
+- It is extremely fast: `0.757 ms` mean latency on the dev machine.
 
 In plain terms: this attempt is a good "cheap baseline", but it is not reliable enough.
 

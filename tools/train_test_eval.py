@@ -205,7 +205,7 @@ def run_split_eval(
         raw = detect(img)
         latency_ms = (time.perf_counter() - t0) * 1000
 
-        line_pred, mask_pred = _ev.normalise_output(raw)
+        line_pred, mask_pred, _pred_no_horizon = _ev.normalise_output(raw)
         ab = _angle_bin(slope)
         ob = _offset_bin(offset)
 

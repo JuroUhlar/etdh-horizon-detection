@@ -4,7 +4,7 @@ Lightweight horizon detection experiments for a UAV hackathon-style task: find t
 
 This repo is not a packaged library. It is an evaluation sandbox with:
 
-- three classical computer-vision attempts under `attempts/`
+- four classical computer-vision attempts under `attempts/`
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
 - a Ukraine ATV FPV clip set under `data/video_clips_ukraine_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
@@ -15,11 +15,12 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 
 ## Current Status
 
-The three attempts tell a clear story on the original Horizon-UAV benchmark:
+The four attempts tell a clear story on the original Horizon-UAV benchmark:
 
 - `attempt-1-otsu-column-scan`: fastest, but brittle
 - `attempt-2-rotation-invariant`: much better line fitting, still mask-limited
-- `attempt-3-top-n-ransac`: best accuracy by far, much slower
+- `attempt-3-top-n-ransac`: best line accuracy, much slower
+- `attempt-4-top-n-ransac_tuned`: same accuracy as 3 on Horizon-UAV with much lower latency (vectorised RANSAC + subsampling)
 
 …and the story changes on the Ukraine ATV FPV dataset after cropping out the large side bars and resizing frames to a UAV-like scale. The two datasets still exercise different things, so we report them side by side.
 
@@ -27,22 +28,24 @@ The three attempts tell a clear story on the original Horizon-UAV benchmark:
 
 | Attempt | Pass rate | Mean Δθ | Mean Δρ | Mean latency |
 |---|---:|---:|---:|---:|
-| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.639 ms |
-| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.579 ms |
-| Attempt 3 | 95.7% | 1.113° | 10.458 px | 69.703 ms |
+| Attempt 1 | 62.4% | 10.461° | 70.744 px | 0.757 ms |
+| Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.703 ms |
+| Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms |
+| Attempt 4 | 95.5% | 1.078° | 10.625 px | 18.006 ms |
 
 **Ukraine ATV FPV** (120 frames, cropped + resized to ~625×480, 110 horizon + 10 no-horizon):
 
 | Attempt | Pass rate | Mean Δθ (TP only) | Mean Δρ | Mean latency | Confusion (TP/FN/FP/TN) |
 |---|---:|---:|---:|---:|---:|
-| Attempt 1 | 16.7% | 7.7° | 59.7 px | 0.9 ms | 110 / 0 / 10 / 0 |
-| Attempt 2 | 4.2% | 15.9° | 100.0 px | 30.9 ms | 110 / 0 / 10 / 0 |
-| Attempt 3 | 45.0% | 7.3° | 61.5 px | 754.7 ms | 110 / 0 / 10 / 0 |
+| Attempt 1 | 16.7% | 7.7° | 59.7 px | 0.814 ms | 110 / 0 / 10 / 0 |
+| Attempt 2 | 4.2% | 15.9° | 100.0 px | 30.064 ms | 110 / 0 / 10 / 0 |
+| Attempt 3 | 45.0% | 6.6° | 60.6 px | 776.2 ms | 110 / 0 / 10 / 0 |
+| Attempt 4 | 34.2% | 11.5° | 83.6 px | 75.6 ms | 110 / 0 / 10 / 0 |
 
 Two things to read carefully on the ATV row:
 
 - The 10 no-horizon frames are forced false positives — none of the current attempts implement the `no_horizon` return path the evaluator supports, so the maximum reachable pass rate on this set is `110/120 = 91.7%`, and the actual numbers are much lower than that because line accuracy collapses.
-- Cropping the side bars matters a lot. Once the black borders are gone, attempt 3 stops catastrophically locking onto frame artefacts and becomes the clear ATV accuracy leader. But the shared Otsu brightness-mask first stage is still the binding constraint, and none of the current attempts can classify no-horizon frames yet.
+- Cropping the side bars matters a lot. Once the black borders are gone, attempt 3 stops catastrophically locking onto frame artefacts and becomes the clear ATV accuracy leader. Attempt 4 is much faster on ATV but does not always beat attempt 3 on line accuracy (RANSAC is stochastic; tuning trades speed for some borderline cases). The shared Otsu brightness-mask first stage is still the binding constraint, and none of the current attempts can classify no-horizon frames yet.
 
 The full breakdown, including per-attempt latency scaling and a detailed read of why the ranking inverts, lives in [attempt_comparison.md](./attempt_comparison.md).
 
@@ -65,7 +68,7 @@ Evaluate an attempt on the full dataset:
 .venv/bin/python tools/evaluate.py attempts/attempt-3-top-n-ransac
 ```
 
-That also writes `attempts/<attempt>/full-eval-results.json` with the aggregate metrics and per-frame results.
+That also writes `attempts/<attempt>/full-eval-results-<dataset_dir_name>.json` (e.g. `full-eval-results-horizon_uav_dataset.json`) with the aggregate metrics and per-frame results.
 
 Use `--limit` for quick iteration:
 
@@ -152,6 +155,7 @@ attempts/
   attempt-1-otsu-column-scan/
   attempt-2-rotation-invariant/
   attempt-3-top-n-ransac/
+  attempt-4-top-n-ransac_tuned/
 data/
   horizon_uav_dataset/         # 490 labelled images + masks + label.csv
   samples/                     # 4 manual stress-test images, especially rotation edge cases
@@ -184,7 +188,7 @@ Accepted return shapes are:
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
 - `[{"line": ...}, ...]` for top-N detectors; the evaluator scores the first candidate
 
-This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the three current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
+This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the four current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the Ukraine ATV dataset.
 
 ## Metrics
 
