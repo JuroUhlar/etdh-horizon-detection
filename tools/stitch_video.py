@@ -7,6 +7,7 @@ Usage:
 """
 
 import argparse
+import re
 from pathlib import Path
 
 import cv2
@@ -15,12 +16,24 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 DEFAULT_FRAME_DURATION_S = 0.5
 DEFAULT_CODEC_CANDIDATES = ("avc1", "mp4v")
 
+_NATKEY_RE = re.compile(r"(\d+)")
+
+
+def natural_key(path: Path) -> list:
+    """Sort key that compares digit runs numerically.
+
+    Filenames like `clip_2.jpg` and `clip_10.jpg` lex-sort as `_10` < `_2`
+    because '1' < '2'. Numerical splitting fixes that and also orders
+    timestamp-prefixed filenames (e.g. `...-00.04.37.277-...`) chronologically.
+    """
+    return [int(part) if part.isdigit() else part for part in _NATKEY_RE.split(path.name)]
+
 
 def list_frames(frames_dir: Path) -> list[Path]:
     if not frames_dir.exists():
         raise FileNotFoundError(f"Frame directory does not exist: {frames_dir}")
     frames = [
-        path for path in sorted(frames_dir.iterdir())
+        path for path in sorted(frames_dir.iterdir(), key=natural_key)
         if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     ]
     if not frames:
@@ -45,8 +58,11 @@ def stitch_frames_to_video(
     frames_dir: Path,
     output_path: Path,
     frame_duration_s: float = DEFAULT_FRAME_DURATION_S,
+    limit: int | None = None,
 ) -> tuple[int, tuple[int, int], float, str]:
     frames = list_frames(frames_dir)
+    if limit is not None:
+        frames = frames[:limit]
     first = cv2.imread(str(frames[0]))
     if first is None:
         raise RuntimeError(f"Could not read first frame: {frames[0]}")
@@ -91,6 +107,12 @@ def main():
         default=DEFAULT_FRAME_DURATION_S,
         help="Seconds to hold each frame in the output video (default: 0.5)",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Only include the first N frames (after natural sort)",
+    )
     args = parser.parse_args()
 
     output_path = args.out or args.frames_dir.parent / f"{args.frames_dir.name}.mp4"
@@ -98,6 +120,7 @@ def main():
         args.frames_dir,
         output_path,
         frame_duration_s=args.frame_duration,
+        limit=args.limit,
     )
     print(
         f"stitched {count} frames into {output_path} "

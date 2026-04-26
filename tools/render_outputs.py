@@ -20,7 +20,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from stitch_video import DEFAULT_FRAME_DURATION_S, stitch_frames_to_video
+from stitch_video import DEFAULT_FRAME_DURATION_S, natural_key, stitch_frames_to_video
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_IMAGES = REPO_ROOT / "data" / "horizon_uav_dataset" / "images"
@@ -47,7 +47,7 @@ def discover_images(images_dir: Path, limit: int | None) -> list[Path]:
         raise SystemExit(f"Image directory does not exist: {images_dir}")
 
     paths = [
-        path for path in sorted(images_dir.iterdir())
+        path for path in sorted(images_dir.iterdir(), key=natural_key)
         if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
     ]
     if limit is not None:
