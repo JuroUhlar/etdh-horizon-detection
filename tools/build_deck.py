@@ -8,8 +8,9 @@ Slide plan (16:9, ~3 min total):
     4. Hard dataset — bar chart + overlay video
     5. Algorithm walkthrough A — input -> Lab -> Otsu masks
     6. Algorithm walkthrough B — boundary -> RANSAC pool -> coherence rerank
-    7. Performance testing — Pi 5 docker model + latency results
-    8. Final result + budget recap
+    7. Why attempt 10 — concrete frame where the added candidates win
+    8. Performance testing — Pi 5 docker model + latency results
+    9. Final result + budget recap
 """
 
 from pathlib import Path
@@ -406,6 +407,34 @@ def slide_algorithm_b(prs):
     np_.runs[0].font.color.rgb = TEXT_DARK
 
 
+def slide_value_add(prs):
+    slide = add_blank_slide(prs)
+    add_title(slide, "Why attempt 10 - one concrete frame",
+              "FPV road approach. Attempt 8 ships the wrong line; attempt 10's added candidate beats it.")
+
+    # Comparison image, centered, scaled to fit
+    img_w = Inches(11.5)
+    add_image(slide, HERO_DIR / "08_a8_vs_a10.png",
+              Inches(0.9), Inches(1.55), width=img_w)
+
+    # Short explanation strip below the image
+    add_colored_rect(slide, Inches(0.5), Inches(6.55), Inches(12.3), Inches(0.85), BG_LIGHT, ACCENT_GREEN)
+    box = slide.shapes.add_textbox(Inches(0.7), Inches(6.6), Inches(12.0), Inches(0.8))
+    tf = box.text_frame
+    tf.word_wrap = True
+    p1 = tf.paragraphs[0]
+    p1.text = ("Attempt 10 inherits attempt 8's RANSAC pool unchanged. When the two final lines disagree, "
+               "the winner came from one of attempt 10's added candidates - DP boundary or top-connected sky envelope.")
+    p1.runs[0].font.size = Pt(14)
+    p1.runs[0].font.color.rgb = TEXT_DARK
+    p2 = tf.add_paragraph()
+    p2.text = ("Here: attempt 8 lands 10.7 deg off true horizon (FAIL gate). Attempt 10's sky-envelope candidate "
+               "wins the rerank and lands 1.9 deg off (PASS).")
+    p2.runs[0].font.size = Pt(14)
+    p2.runs[0].font.bold = True
+    p2.runs[0].font.color.rgb = ACCENT_GREEN
+
+
 def slide_performance(prs):
     slide = add_blank_slide(prs)
     add_title(slide, "How we tested performance",
@@ -509,6 +538,7 @@ def main():
     slide_hard_dataset(prs)
     slide_algorithm_a(prs)
     slide_algorithm_b(prs)
+    slide_value_add(prs)
     slide_performance(prs)
     slide_final(prs)
 
