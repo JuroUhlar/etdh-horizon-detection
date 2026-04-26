@@ -60,7 +60,7 @@ def render_dataset_chart(rows, dataset_key: str, title: str, out_path: Path) -> 
     labels = [short_label(r["n"], r["name"]) for r in rows_with_data]
     pass_rates = [r[f"{dataset_key}_pass"] for r in rows_with_data]
 
-    fig, ax = plt.subplots(figsize=(11, 6.0))
+    fig, ax = plt.subplots(figsize=(11, 6.4))
     colors = []
     for r in rows_with_data:
         if r["n"] == 10:
@@ -69,22 +69,23 @@ def render_dataset_chart(rows, dataset_key: str, title: str, out_path: Path) -> 
             colors.append("#4c72b0")
     bars = ax.bar(labels, pass_rates, color=colors)
 
-    ax.set_ylim(0, 105)
-    ax.set_ylabel("Pass rate  (%)", fontsize=12)
-    ax.set_title(title, fontsize=14, weight="bold")
+    ax.set_ylim(0, 108)
+    ax.set_ylabel("Pass rate  (%)", fontsize=15)
+    ax.set_title(title, fontsize=18, weight="bold")
     ax.axhline(60, color="#888888", linestyle="--", linewidth=0.8, alpha=0.7)
     ax.axhline(95, color="#888888", linestyle="--", linewidth=0.8, alpha=0.7)
     ax.grid(axis="y", alpha=0.25)
+    ax.tick_params(axis="y", labelsize=13)
 
     for bar, rate in zip(bars, pass_rates):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 1.2,
+            bar.get_height() + 1.5,
             f"{rate:.1f}",
-            ha="center", va="bottom", fontsize=10,
+            ha="center", va="bottom", fontsize=13, weight="bold",
         )
 
-    plt.setp(ax.get_xticklabels(), rotation=30, ha="right", fontsize=10)
+    plt.setp(ax.get_xticklabels(), rotation=30, ha="right", fontsize=13)
     fig.tight_layout()
     fig.savefig(out_path, dpi=160)
     plt.close(fig)

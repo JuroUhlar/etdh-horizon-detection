@@ -216,30 +216,50 @@ def slide_problem(prs):
     slide = add_blank_slide(prs)
     add_title(slide, "The problem", "Half the frame is sky - and the sky lies to you")
 
-    # Body bullets — left column
+    # Body bullets — left column (narrower, to make room for the illustration)
     bullets = [
-        ("UAV at 50-60 m: half the frame or more is sky.", True, 22),
-        ("The ground-target detector spends Hailo cycles on pixels that can't contain a target.", False, 18),
-        ("Worse: clouds, sun glare and birds masquerade as ground targets - false positives.", False, 18),
+        ("UAV at 50-60 m: half the frame or more is sky.", True, 20),
+        ("The ground-target detector spends Hailo cycles on pixels that can't contain a target.", False, 16),
+        ("Worse: clouds, sun glare and birds masquerade as ground targets - false positives.", False, 16),
         ("", False, 8),
-        ("Fix: crop above the horizon before the detector runs.", True, 22),
-        ("Catch: the horizon detector itself must be fast enough to be worth running.", False, 18),
+        ("Fix: crop above the horizon before the detector runs.", True, 20),
+        ("Catch: the horizon detector itself must be fast enough to be worth running.", False, 16),
     ]
-    add_text_block(slide, Inches(0.5), Inches(1.7), Inches(7.6), Inches(4.5), bullets, size=18)
+    add_text_block(slide, Inches(0.5), Inches(1.7), Inches(4.6), Inches(4.7), bullets, size=16)
 
-    # Hard requirements box on the right
-    add_colored_rect(slide, Inches(8.4), Inches(1.7), Inches(4.5), Inches(4.7), BG_LIGHT, ACCENT_BLUE)
-    req = slide.shapes.add_textbox(Inches(8.6), Inches(1.85), Inches(4.2), Inches(4.5))
+    # Centre-column illustration: a real UAV frame showing how much of the
+    # field-of-view is sky. The image is square (480x480), so the height
+    # matches the requested width.
+    img_w = Inches(4.0)
+    add_image(slide, HERO_DIR / "problem_illustration.jpg",
+              Inches(5.4), Inches(1.7), width=img_w, height=img_w)
+    cap = slide.shapes.add_textbox(Inches(5.4), Inches(5.75), img_w, Inches(0.7))
+    tf = cap.text_frame
+    tf.word_wrap = True
+    cp = tf.paragraphs[0]
+    cp.text = "Real UAV frame (Horizon-UAV dataset, ~50 m)"
+    cp.runs[0].font.size = Pt(13)
+    cp.runs[0].font.italic = True
+    cp.runs[0].font.color.rgb = TEXT_DARK
+    cp2 = tf.add_paragraph()
+    cp2.text = "Sky fills the upper half - all wasted detector time."
+    cp2.runs[0].font.size = Pt(13)
+    cp2.runs[0].font.italic = True
+    cp2.runs[0].font.color.rgb = TEXT_MUTED
+
+    # Right column: hard requirements box (narrower to fit alongside the image)
+    add_colored_rect(slide, Inches(9.7), Inches(1.7), Inches(3.3), Inches(4.7), BG_LIGHT, ACCENT_BLUE)
+    req = slide.shapes.add_textbox(Inches(9.85), Inches(1.85), Inches(3.0), Inches(4.5))
     tf = req.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.text = "Hard requirements"
-    p.runs[0].font.size = Pt(20)
+    p.runs[0].font.size = Pt(18)
     p.runs[0].font.bold = True
     p.runs[0].font.color.rgb = ACCENT_BLUE
     for line in [
         "≥ 15 FPS on Pi 5 CPU",
-        "  while a detector runs on Hailo",
+        "  while detector runs on Hailo",
         "",
         "Output: angle + offset",
         "  (or sky mask)",
@@ -250,9 +270,9 @@ def slide_problem(prs):
         "  Δθ < 5°  AND  Δρ/H < 5%",
     ]:
         p = tf.add_paragraph()
-        p.text = line
+        p.text = line if line else " "
         if p.runs:
-            p.runs[0].font.size = Pt(15)
+            p.runs[0].font.size = Pt(13)
             p.runs[0].font.color.rgb = TEXT_DARK
 
     add_footer(slide, "Source: hackathon brief / project CLAUDE.md")
@@ -301,7 +321,7 @@ def slide_hard_dataset(prs):
     add_video_with_autoplay_loop(
         slide,
         VIDEO_DIR / "fpv_overlay.mp4",
-        HERO_DIR / "01_input.png",
+        HERO_DIR / "fpv_poster.jpg",  # poster must come from the same dataset as the video
         Inches(8.1), Inches(1.7), Inches(4.9), Inches(4.9),
     )
     cap = slide.shapes.add_textbox(Inches(8.1), Inches(6.65), Inches(4.9), Inches(0.4))
