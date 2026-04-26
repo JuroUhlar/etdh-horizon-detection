@@ -4,8 +4,8 @@
   "dataset_dir": "data/video_clips_fpv_atv",
   "limit": null,
   "seed": 0,
-  "generated_at_utc": "2026-04-25T16:58:52.729307Z",
-  "wall_clock_s": 9.11265966699284,
+  "generated_at_utc": "2026-04-25T18:03:24.219914Z",
+  "wall_clock_s": 7.385248499995214,
   "summary": {
     "counts": {
       "total": 120,
@@ -52,21 +52,21 @@
     },
     "mask_iou": null,
     "speed": {
-      "verdict": "FAIL",
+      "verdict": "PASS",
       "latency_budget_ms": 66.66666666666667,
       "latency_ms": {
-        "mean": 73.35159442494235,
-        "median": 74.21872949635144,
-        "p90": 76.58343359798891,
-        "worst": 78.01166598801501
+        "mean": 58.94471871664185,
+        "median": 59.50856200797716,
+        "p90": 61.54859589150874,
+        "worst": 64.67983299808111
       },
       "fps": {
-        "mean": 13.6329688241918,
-        "median": 13.473687932763111,
-        "p90": 13.057654286556565,
-        "worst": 12.818595620732298
+        "mean": 16.96504829902039,
+        "median": 16.80430456151754,
+        "p90": 16.247324338035146,
+        "worst": 15.46076966571122
       },
-      "pct_frames_over_budget": 93.33333333333333
+      "pct_frames_over_budget": 0.0
     },
     "worst_frames_by_angle": [
       {

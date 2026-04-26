@@ -4,7 +4,7 @@ Lightweight horizon detection experiments for a UAV hackathon-style task: find t
 
 This repo is not a packaged library. It is an evaluation sandbox with:
 
-- four classical computer-vision attempts under `attempts/`
+- ten classical computer-vision attempts under `attempts/` (attempts 5 and 6 were short-lived regressions; the active comparison covers 1–4 and 7–10)
 - a dataset mirror under `data/horizon_uav_dataset/`
 - a small rotated stress set under `data/samples/`
 - an FPV/ATV clip set under `data/video_clips_fpv_atv/` (videos + extracted frames, hand-labelled with `tools/annotate_horizon.py`)
@@ -15,14 +15,20 @@ This repo is not a packaged library. It is an evaluation sandbox with:
 
 ## Current Status
 
-The four attempts tell a clear story on the original Horizon-UAV benchmark:
+The attempt arc tells a layered story:
 
-- `attempt-1-otsu-column-scan`: fastest, but brittle
-- `attempt-2-rotation-invariant`: much better line fitting, still mask-limited
-- `attempt-3-top-n-ransac`: best line accuracy, much slower
-- `attempt-4-top-n-ransac_tuned`: same accuracy as 3 on Horizon-UAV with much lower latency (vectorised RANSAC + subsampling)
+- `attempt-1-otsu-column-scan`: fastest, but brittle on rotation
+- `attempt-2-rotation-invariant`: rotation-safe boundary + Huber line fit; still mask-limited
+- `attempt-3-top-n-ransac`: best line accuracy of the early stack, but exceeds the speed gate
+- `attempt-4-top-n-ransac_tuned`: matches 3's accuracy on Horizon-UAV with vectorised RANSAC + subsampling
+- `attempt-7-multicue-ettinger`: pools candidates from grayscale + Lab b\*; reranks with Ettinger color-region coherence × angle prior; first attempt that can abstain (`no_horizon`)
+- `attempt-8-temporal-prior`: adds a scene-change-gated temporal prior to attempt 7's reranker; best simple FPV/ATV baseline
+- `attempt-9-likelihood-dp-boundary`: gated low-resolution colour-likelihood + dynamic-programming boundary candidate
+- `attempt-10-top-connected-sky`: gated top-connected sky-envelope candidate using colour likelihood + texture; **best combined result so far**
 
-…and the story changes on the FPV/ATV clip set after cropping out the large side bars and resizing frames to a UAV-like scale. The two datasets still exercise different things, so we report them side by side.
+Attempts 5 (`attempt-5-efficient-ransac`) and 6 (`attempt-6-dual-channel-ransac`) were experiments that regressed on either UAV or FPV and are kept on disk for the record only — they are excluded from the comparison tables below to match `attempt_comparison.md`.
+
+The two datasets still exercise different things, so we report them side by side.
 
 **Horizon-UAV** (490 images, 480×480, every frame has a horizon):
 
@@ -32,6 +38,10 @@ The four attempts tell a clear story on the original Horizon-UAV benchmark:
 | Attempt 2 | 81.2% | 7.313° | 36.700 px | 3.703 ms | 6.0 ms | ✓ PASS |
 | Attempt 3 | 95.5% | 1.091° | 10.201 px | 71.502 ms | 70.7 ms | ✗ FAIL |
 | Attempt 4 | 95.1% | 1.078° | 10.625 px | 18.006 ms | 18.3 ms | ✓ PASS |
+| Attempt 7 | 96.9% | 0.994° | 8.836 px | 8.620 ms | 22.3 ms | ✓ PASS |
+| Attempt 8 | 96.7% | 1.011° | 8.947 px | 9.2 ms | 21.5 ms | ✓ PASS |
+| Attempt 9 | 97.1% | **0.972°** | 8.798 px | 14.3 ms | 27.3 ms | ✓ PASS |
+| Attempt 10 | **97.3%** | 0.991° | **8.028 px** | 17.9 ms | 30.3 ms | ✓ PASS |
 
 Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1` — conservative model of one Pi 5 Cortex-A76 core with Hailo driver running in parallel. Speed gate: mean AND p90 latency ≤ 67 ms (15 FPS). See `tools/bench_docker.sh` and `docs/evaluation-environment.md`.
 
@@ -39,17 +49,21 @@ Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1` — conservative
 
 | Attempt | Pass rate | Mean Δθ (TP only) | Mean Δρ | Mean latency | Confusion (TP/FN/FP/TN) |
 |---|---:|---:|---:|---:|---:|
-| Attempt 1 | 16.7% | 7.7° | 59.7 px | 0.814 ms | 110 / 0 / 10 / 0 |
-| Attempt 2 | 4.2% | 15.9° | 100.0 px | 30.064 ms | 110 / 0 / 10 / 0 |
-| Attempt 3 | 45.0% | 6.6° | 60.6 px | 776.2 ms | 110 / 0 / 10 / 0 |
-| Attempt 4 | 34.2% | 11.5° | 83.6 px | 75.6 ms | 110 / 0 / 10 / 0 |
+| Attempt 1 | 16.7% | 7.7° | 59.7 px | 0.79 ms | 110 / 0 / 10 / 0 |
+| Attempt 2 | 4.2% | 15.9° | 100.0 px | 29.8 ms | 110 / 0 / 10 / 0 |
+| Attempt 3 | 45.8% | 6.5° | 59.8 px | 731.6 ms | 110 / 0 / 10 / 0 |
+| Attempt 4 | 29.2% | 11.5° | 102.2 px | 58.9 ms | 110 / 0 / 10 / 0 |
+| Attempt 7 | 52.5% | 5.6° | 52.8 px | 29.3 ms | 105 / 5 / 4 / 6 |
+| Attempt 8 | 57.5% | 4.8° | 48.9 px | 26.5 ms | 100 / 10 / 2 / 8 |
+| Attempt 9 | 57.5% | 4.8° | 48.9 px | 35.0 ms | 100 / 10 / 2 / 8 |
+| Attempt 10 | **60.0%** | **4.4°** | **43.1 px** | 37.2 ms | 100 / 10 / 2 / 8 |
 
-Two things to read carefully on the ATV row:
+Two things to read carefully on the FPV/ATV table:
 
-- The 10 no-horizon frames are forced false positives — none of the current attempts implement the `no_horizon` return path the evaluator supports, so the maximum reachable pass rate on this set is `110/120 = 91.7%`, and the actual numbers are much lower than that because line accuracy collapses.
-- Cropping the side bars matters a lot. Once the black borders are gone, attempt 3 stops catastrophically locking onto frame artefacts and becomes the clear ATV accuracy leader. Attempt 4 is much faster on ATV but does not always beat attempt 3 on line accuracy (RANSAC is stochastic; tuning trades speed for some borderline cases). The shared Otsu brightness-mask first stage is still the binding constraint, and none of the current attempts can classify no-horizon frames yet.
+- **Attempts 1–4 hit a hard 91.7% ceiling** because they always emit a line: every one of the 10 no-horizon frames is a forced false positive (FP=10, TN=0). Attempt 7 is the first to abstain (TN=6), and attempts 8–10 push that to TN=8 at the cost of more horizon false negatives (FN=10).
+- **Cropping the side bars matters a lot.** Once the black borders are gone, attempt 3 stops catastrophically locking onto frame artefacts; the more aggressive line search was not intrinsically wrong, it was being poisoned by bad input geometry.
 
-The full breakdown, including per-attempt latency scaling and a detailed read of why the ranking inverts, lives in [attempt_comparison.md](./attempt_comparison.md).
+The full breakdown, including per-attempt latency scaling and a detailed read of what each attempt added, lives in [attempt_comparison.md](./attempt_comparison.md).
 
 ## Quick Start
 
@@ -158,6 +172,12 @@ attempts/
   attempt-2-rotation-invariant/
   attempt-3-top-n-ransac/
   attempt-4-top-n-ransac_tuned/
+  attempt-5-efficient-ransac/          # short-lived regression, kept for record
+  attempt-6-dual-channel-ransac/       # short-lived regression, kept for record
+  attempt-7-multicue-ettinger/
+  attempt-8-temporal-prior/
+  attempt-9-likelihood-dp-boundary/
+  attempt-10-top-connected-sky/
 data/
   horizon_uav_dataset/         # 490 labelled images + masks + label.csv
   samples/                     # 4 manual stress-test images, especially rotation edge cases
@@ -190,7 +210,7 @@ Accepted return shapes are:
 - `{"line": (vx, vy, x0, y0), "mask": mask, ...}` for rotation-safe line output
 - `[{"line": ...}, ...]` for top-N detectors; the evaluator scores the first candidate
 
-This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Note that none of the four current attempts emit no-horizon decisions yet — they always predict a line, which means they take a confusion-matrix hit on no-horizon labels in the FPV/ATV clip set.
+This loose contract is intentional: each attempt stays self-contained instead of becoming a package. Attempts 1–6 always predict a line and so take a forced confusion-matrix hit on no-horizon labels in the FPV/ATV clip set; attempts 7–10 implement the abstention path (attempt 7 reaches TN=6/10, attempts 8–10 reach TN=8/10).
 
 ## Metrics
 

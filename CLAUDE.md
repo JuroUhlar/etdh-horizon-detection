@@ -38,14 +38,22 @@ Full metric definitions, aggregate statistics, and ground-truth conventions: [`d
 
 Pass rate and latency are from `tools/evaluate.py` on **Horizon-UAV** (490 frames) on the development host; see each attempt’s `full-eval-results-horizon_uav_dataset.json` for the exact run.
 
-| Attempt | Method | Pass rate | Mean latency (dev host) | Mean latency (Docker / Pi 5 model) | Speed gate | Status |
-|---|---|---|---|---|---|---|
-| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | 0.76 ms | 2.2 ms | ✓ PASS | Done, scored |
-| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | 3.70 ms | 6.0 ms | ✓ PASS | Done, scored |
-| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; RANSAC multi-hypothesis + Huber refit | 95.5 % | 71.5 ms | 70.7 ms | ✗ FAIL | Done, scored |
-| 4 — `attempts/attempt-4-top-n-ransac_tuned/` | Same as 3; vectorised RANSAC scoring, boundary subsampling, fewer iterations | 95.1 % | 18.0 ms | 18.3 ms | ✓ PASS | Done, scored |
+| Attempt | Method | UAV pass rate | FPV pass rate | Mean latency (dev host, UAV) | Mean latency (Docker / Pi 5 model, UAV) | Speed gate | Status |
+|---|---|---|---|---|---|---|---|
+| 1 — `attempts/attempt-1-otsu-column-scan/` | Grayscale → Otsu threshold → morph close → column-scan → `np.polyfit` | 62.4 % | — | 0.76 ms | 2.2 ms | ✓ PASS | Done, scored |
+| 2 — `attempts/attempt-2-rotation-invariant/` | Same classifier; replaces column-scan with morph-gradient boundary + `cv2.fitLine` (Huber) | 81.2 % | — | 3.70 ms | 6.0 ms | ✓ PASS | Done, scored |
+| 3 — `attempts/attempt-3-top-n-ransac/` | Same classifier; RANSAC multi-hypothesis + Huber refit | 95.5 % | — | 71.5 ms | 70.7 ms | ✗ FAIL | Done, scored |
+| 4 — `attempts/attempt-4-top-n-ransac_tuned/` | Same as 3; vectorised RANSAC scoring, boundary subsampling, fewer iterations | 95.1 % | 29.2 % | 18.0 ms | 18.3 ms | ✓ PASS | Done, scored |
+| 5 — `attempts/attempt-5-efficient-ransac/` | Tighter N=1 RANSAC: removed clustering, batched early stop, module-level RNG | 39.5 % | — | 2.04 ms | (not benched) | — | Done, scored — regression |
+| 6 — `attempts/attempt-6-dual-channel-ransac/` | Dual-channel (gray + Lab b\*) Otsu, confidence-pick winner, 0° row-scan fallback | 92.5 % | 8.3 % | (not benched) | (not benched) | — | Done, scored — regression on FPV |
+| 7 — `attempts/attempt-7-multicue-ettinger/` | Pool top-K from gray + Lab b\* RANSAC; Sobel orientation filter; rerank by Ettinger coherence × angle prior on 60×60 Lab thumbnail; abstain on degenerate masks / low coherence | **96.9 %** | **52.5 %** | 8.62 ms | 22.3 ms | ✓ PASS | Done, scored |
+| 8 — `attempts/attempt-8-temporal-prior/` | Attempt 7 plus scene-change-gated temporal prior in candidate rerank; calibrated coherence floor for fewer no-horizon FP | 96.7 % | **57.5 %** | 9.2 ms | 21.5 ms | ✓ PASS | Done, scored — best FPV |
+| 9 — `attempts/attempt-9-likelihood-dp-boundary/` | Attempt 8 plus gated 96x72 top/bottom colour-likelihood dynamic-programming boundary candidate | 97.1 % | 57.5 % | 14.3 ms | 27.3 ms | ✓ PASS | Done, scored |
+| 10 — `attempts/attempt-10-top-connected-sky/` | Attempt 9 plus gated 96x72 top-connected sky-envelope candidate using colour likelihood + texture | **97.3 %** | **60.0 %** | 17.9 ms | 30.3 ms | ✓ PASS | Done, scored — best combined |
 
 Docker environment: 1 CPU core, 3.5 GB RAM, `OMP_NUM_THREADS=1`. Speed gate: mean AND p90 latency ≤ 67 ms. Run via `tools/bench_docker.sh`.
+
+Attempt 10 is the current best default when both datasets matter: best Horizon-UAV pass rate (477 / 490) and best FPV/ATV pass rate (72 / 120), while preserving attempt 8/9's no-horizon confusion matrix (TP/FN/FP/TN = 100/10/2/8). Attempt 8 remains the simpler best-FPV baseline.
 
 ## Known failure modes & root causes
 
@@ -53,18 +61,20 @@ All remaining hard failures after attempt 2 are **classifier failures**, not fit
 
 | Failure mode | Trigger | Affected attempts |
 |---|---|---|
-| Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3, 4 |
-| Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3, 4 |
-| Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially), 3, 4 |
+| Luminance ambiguity | Overcast sky (dull grey) ≈ ground (dark greens) — Otsu splits along the wrong feature | 1, 2, 3, 4 (partially fixed in 7 by Lab b\* fallback) |
+| Sun glare | Bright glare patch on one side of the sky; Otsu labels glare = sky, real sky = ground | 1, 2, 3, 4 (partially fixed in 7 by Ettinger rerank) |
+| Haze band | Washed-out haze above the real horizon is darker than upper sky; Otsu's cut lands at the wrong level | 1, 2 (partially), 3, 4 (partially fixed in 7) |
+| FPV treeline / canopy | Ground-level FPV through dense trees: real horizon is partially clipped by canopy; the strongest color-coherent split lands along a treetop | All. Worst remaining failure mode in attempts 7–10 — Δθ up to 38° on `04_10m34s-11m00s_fpv_treeline_*` frames |
+| No-horizon false positive | Sky-only / ground-only frames not quite degenerate enough to trip the abstention threshold; just enough texture coherence to clear the floor | 1–6 fit a line on every frame; attempt 7 abstains on 6 of 10; attempt 8 abstains on 8 of 10 but increases horizon FN |
 
 Rotation failures from attempt 1 (column-scan assumption) were resolved in attempt 2.
 
 ## Next-step options (ranked)
 
-1. **Colour-based classifier** — split on Lab b* channel (sky skews blue, ground skews yellow/green). Small code delta on top of attempt 2/3's boundary extractor. Expected to fix luminance-ambiguity and glare cases.
-2. **Ettinger's covariance method** — for each candidate line, score how well it separates pixels into two colour-coherent Gaussian groups. Classical UAV baseline; robust but ~80 extra lines. Suitable if colour thresholding alone doesn't reach the pass rate target.
-3. **Benchmark on Raspberry Pi 5** — dev-machine timings (M-series Mac) are meaningless for the ≥15 FPS budget. Need real numbers before committing to a heavier classifier.
-4. **Hough-transform variant** — extract edge segments, filter by length/slope, group collinear segments. An alternative route if colour cues are insufficient.
+1. **Better treeline behaviour** — currently the worst failure mass on FPV. Options: detect "canopy clipping" via row-wise variance profile and abstain; or fit two-line model (canopy line + horizon line) and pick the upper.
+2. **Reduce attempt-8 false negatives** — the higher `_FALLBACK_COHERENCE` improves no-horizon TN but increases FPV horizon FN from 5 to 10. A richer abstention model could separate true no-horizon frames from weak-horizon frames better than one scalar floor.
+3. **Avoid ungated dense boundary candidates** — attempt 9's first DP variant regressed until gated by high Ettinger coherence and roll; attempt 10's first sky-envelope gate also regressed on treeline until tightened; naive Hough in attempt 8 also regressed because roads/overlays/tree edges dominated.
+4. **Real Raspberry Pi 5 benchmark** — the Docker model gates the speed budget honestly enough for development, but a real-Pi run is still required before declaring the requirement met.
 
 Background research on all of these methods (literature references, dataset survey, test-design notes): [`docs/research-horizon-detection.md`](docs/research-horizon-detection.md).
 Known reference implementations: [`docs/inspiration-implementations.md`](docs/inspiration-implementations.md).
@@ -88,8 +98,30 @@ hack-horizon/
 │   ├── attempt-3-top-n-ransac/
 │   │   ├── horizon_detect.py
 │   │   └── requirements.txt
-│   └── attempt-4-top-n-ransac_tuned/
+│   ├── attempt-4-top-n-ransac_tuned/
+│   │   ├── horizon_detect.py
+│   │   └── result.md
+│   ├── attempt-5-efficient-ransac/
+│   │   ├── horizon_detect.py
+│   │   └── result.md
+│   ├── attempt-6-dual-channel-ransac/
+│   │   ├── horizon_detect.py
+│   │   └── result.md
+│   ├── attempt-7-multicue-ettinger/
+│   │   ├── horizon_detect.py
+│   │   ├── requirements.txt
+│   │   └── result.md
+│   ├── attempt-8-temporal-prior/
+│   │   ├── horizon_detect.py
+│   │   ├── requirements.txt
+│   │   └── result.md
+│   ├── attempt-9-likelihood-dp-boundary/
+│   │   ├── horizon_detect.py
+│   │   ├── requirements.txt
+│   │   └── result.md
+│   └── attempt-10-top-connected-sky/
 │       ├── horizon_detect.py
+│       ├── requirements.txt
 │       └── result.md
 ├── data/
 │   └── horizon_uav_dataset/         # 490-image benchmark (images/, masks/, label.csv)
@@ -105,5 +137,6 @@ hack-horizon/
 
 - **Each attempt** lives in its own `attempts/attempt-N-<name>/` directory with a `horizon_detect.py` exposing a `detect_horizon(image_bgr) -> list[dict]` API and a `result.md` documenting method, scores, and failure analysis.
 - **Scores are always run** via `tools/evaluate.py <attempt-dir>` against the full 490-image Horizon-UAV dataset before an attempt is considered done; use `--dataset data/video_clips_fpv_atv` for the secondary labelled set. Outputs are `full-eval-results-<dataset_dir_name>.json` per run.
+- **Attempt summaries are always updated** in `attempt_comparison.md` whenever a new attempt is added or rescored. Do this before declaring the attempt complete.
 - **Line representation internally:** `(vx, vy, x0, y0)` from `cv2.fitLine` — valid at all orientations. Convert to `(angle_deg, intercept_y)` for human output; convert to Hesse `(θ, ρ)` for metric computation.
 - **Python environment:** `.venv/` at repo root.
