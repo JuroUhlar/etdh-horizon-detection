@@ -22,3 +22,7 @@ attempts/*/outputs/
 data/video_clips_*/source.*
 data/video_clips_*/sheet_*.jpg
 data/video_clips_*/frames/
+
+# Local-only PowerPoint skill (installed via `npx skills add`; not part of the project)
+.agents/skills/powerpoint/
+.claude/skills/powerpoint
