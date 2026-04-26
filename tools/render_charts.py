@@ -63,10 +63,8 @@ def render_dataset_chart(rows, dataset_key: str, title: str, out_path: Path) -> 
     fig, ax = plt.subplots(figsize=(11, 6.0))
     colors = []
     for r in rows_with_data:
-        if r["n"] == 8:
-            colors.append("#d62728")  # featured attempt — red highlight
-        elif r["n"] == 10:
-            colors.append("#2ca02c")  # current best — green
+        if r["n"] == 10:
+            colors.append("#2ca02c")  # featured attempt + current best — green
         else:
             colors.append("#4c72b0")
     bars = ax.bar(labels, pass_rates, color=colors)

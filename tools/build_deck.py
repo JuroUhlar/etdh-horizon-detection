@@ -8,7 +8,8 @@ Slide plan (16:9, ~3 min total):
     4. Hard dataset — bar chart + overlay video
     5. Algorithm walkthrough A — input -> Lab -> Otsu masks
     6. Algorithm walkthrough B — boundary -> RANSAC pool -> coherence rerank
-    7. Final result + budget recap
+    7. Performance testing — Pi 5 docker model + latency results
+    8. Final result + budget recap
 """
 
 from pathlib import Path
@@ -204,7 +205,7 @@ def slide_title(prs):
     # Tag line
     tag = slide.shapes.add_textbox(Inches(0.8), Inches(6.4), Inches(11.7), Inches(0.6))
     tp = tag.text_frame.paragraphs[0]
-    tp.text = "10 attempts. ~22 ms on Raspberry Pi 5. 46 FPS while detector runs on Hailo."
+    tp.text = "10 attempts. ~30 ms on the Pi 5 model. 33 FPS while detector runs on Hailo."
     tp.runs[0].font.size = Pt(15)
     tp.runs[0].font.italic = True
     tp.runs[0].font.color.rgb = TEXT_MUTED
@@ -274,7 +275,7 @@ def slide_easy_dataset(prs):
     )
     cap = slide.shapes.add_textbox(Inches(8.1), Inches(6.65), Inches(4.9), Inches(0.4))
     cp = cap.text_frame.paragraphs[0]
-    cp.text = "Attempt 8 running on every frame (looped)."
+    cp.text = "Attempt 10 running on every frame (looped, first half of dataset)."
     cp.runs[0].font.size = Pt(12)
     cp.runs[0].font.italic = True
     cp.runs[0].font.color.rgb = TEXT_MUTED
@@ -282,10 +283,10 @@ def slide_easy_dataset(prs):
     # Headline numbers strip
     headline = slide.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(7.4), Inches(0.7))
     p = headline.text_frame.paragraphs[0]
-    p.text = "Attempt 8: 96.7 % pass   |   21.5 ms mean   |   46 FPS   |   PASS"
+    p.text = "Attempt 10: 97.3 % pass   |   30.3 ms mean   |   33 FPS   |   PASS"
     p.runs[0].font.size = Pt(18)
     p.runs[0].font.bold = True
-    p.runs[0].font.color.rgb = ACCENT_RED
+    p.runs[0].font.color.rgb = ACCENT_GREEN
 
 
 def slide_hard_dataset(prs):
@@ -311,10 +312,10 @@ def slide_hard_dataset(prs):
 
     headline = slide.shapes.add_textbox(Inches(0.4), Inches(6.55), Inches(7.4), Inches(0.7))
     p = headline.text_frame.paragraphs[0]
-    p.text = "Attempt 8: 57.5 % pass   |   26.5 ms mean   |   38 FPS   |   speed PASS, accuracy work to do"
+    p.text = "Attempt 10: 60.0 % pass   |   37.2 ms mean   |   27 FPS   |   speed PASS, accuracy work to do"
     p.runs[0].font.size = Pt(16)
     p.runs[0].font.bold = True
-    p.runs[0].font.color.rgb = ACCENT_RED
+    p.runs[0].font.color.rgb = ACCENT_GREEN
 
 
 def slide_algorithm_a(prs):
@@ -405,6 +406,58 @@ def slide_algorithm_b(prs):
     np_.runs[0].font.color.rgb = TEXT_DARK
 
 
+def slide_performance(prs):
+    slide = add_blank_slide(prs)
+    add_title(slide, "How we tested performance",
+              "Pi 5 isn't on the dev machine - so we approximate its CPU budget in Docker.")
+
+    # Left column - the harness
+    left_block = [
+        ("The harness", True, 22),
+        ("Docker container, single CPU core, 3.5 GB RAM, OMP_NUM_THREADS=1.", False, 16),
+        ("Same Python wheels and OpenCV the Pi will run.", False, 16),
+        ("Conservative single-core model: real Pi 5 will be at least this fast.", False, 16),
+        ("", False, 8),
+        ("The pass gate", True, 22),
+        ("Mean AND p90 latency  <=  67 ms per frame.", False, 16),
+        ("That's the >= 15 FPS requirement, applied to the worst 10 % of frames too.", False, 16),
+        ("", False, 8),
+        ("How we run it", True, 22),
+        ("`tools/bench_docker.sh`  ->  full 490-frame eval  ->  per-attempt JSON.", False, 16),
+        ("Re-run on every attempt: regressions caught immediately.", False, 16),
+    ]
+    add_text_block(slide, Inches(0.5), Inches(1.7), Inches(7.0), Inches(5.0), left_block, size=16)
+
+    # Right column - results card for attempt 10
+    add_colored_rect(slide, Inches(7.8), Inches(1.7), Inches(5.2), Inches(5.0), BG_LIGHT, ACCENT_GREEN)
+    box = slide.shapes.add_textbox(Inches(8.0), Inches(1.85), Inches(4.9), Inches(4.8))
+    tf = box.text_frame
+    tf.word_wrap = True
+
+    def add_para(text, *, size=15, bold=False, color=TEXT_DARK):
+        p = tf.add_paragraph() if tf.paragraphs[0].text else tf.paragraphs[0]
+        p.text = text if text else " "
+        p.runs[0].font.size = Pt(size)
+        p.runs[0].font.bold = bold
+        p.runs[0].font.color.rgb = color
+        p.space_after = Pt(4)
+
+    add_para("Attempt 10 on the Pi 5 model", size=20, bold=True, color=ACCENT_GREEN)
+    add_para("")
+    add_para("Easy  (Horizon-UAV, 490 frames)", bold=True, size=16)
+    add_para("  mean  30.3 ms     p90  30.7 ms")
+    add_para("  ~ 33 FPS    PASS  (gate 67 ms)", color=ACCENT_GREEN, bold=True)
+    add_para("")
+    add_para("Hard  (FPV / ATV, 120 frames)", bold=True, size=16)
+    add_para("  mean  37.2 ms     p90  38.8 ms")
+    add_para("  ~ 27 FPS    PASS  (gate 67 ms)", color=ACCENT_GREEN, bold=True)
+    add_para("")
+    add_para("Headroom on the harder dataset:", size=13, color=TEXT_MUTED)
+    add_para("  29 ms unused per frame for the Hailo detector to consume.", size=13, color=TEXT_MUTED)
+
+    add_footer(slide, "Source: full-eval-results-*.json under each attempt dir | Docker spec: docker/Dockerfile + tools/bench_docker.sh")
+
+
 def slide_final(prs):
     slide = add_blank_slide(prs)
     add_title(slide, "Result + budget", "Stage 7 on the same frame, then a Huber refit on the winner's inliers.")
@@ -426,20 +479,20 @@ def slide_final(prs):
         p.runs[0].font.color.rgb = color
         p.space_after = Pt(4)
 
-    add_para("Attempt 8 - shipped result", size=22, bold=True, color=ACCENT_BLUE)
+    add_para("Attempt 10 - shipped result", size=22, bold=True, color=ACCENT_GREEN)
     add_para("")
     add_para("Easy (Horizon-UAV)", bold=True)
-    add_para("  96.7 % pass  |  21.5 ms  |  46 FPS")
+    add_para("  97.3 % pass  |  30.3 ms  |  33 FPS")
     add_para("")
     add_para("Hard (FPV / ATV)", bold=True)
-    add_para("  57.5 % pass  |  26.5 ms  |  38 FPS")
+    add_para("  60.0 % pass  |  37.2 ms  |  27 FPS")
     add_para("")
     add_para("Speed budget", bold=True)
-    add_para("  67 ms / frame target  ->  comfortable margin")
+    add_para("  67 ms / frame target  ->  comfortable margin on both datasets")
     add_para("")
-    add_para("Where we kept going", size=14, bold=True, color=ACCENT_GREEN)
-    add_para("  Attempt 10 (sky envelope): 97.3 % UAV / 60.0 % FPV", size=14, color=ACCENT_GREEN)
-    add_para("  Treelines + low ground horizons remain the open problem.", size=14, color=TEXT_MUTED)
+    add_para("Open problems", size=14, bold=True, color=TEXT_DARK)
+    add_para("  Treelines + low ground horizons - worst remaining failure mass.", size=14, color=TEXT_MUTED)
+    add_para("  Real Pi 5 benchmark still pending (Docker model is conservative).", size=14, color=TEXT_MUTED)
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +509,7 @@ def main():
     slide_hard_dataset(prs)
     slide_algorithm_a(prs)
     slide_algorithm_b(prs)
+    slide_performance(prs)
     slide_final(prs)
 
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)

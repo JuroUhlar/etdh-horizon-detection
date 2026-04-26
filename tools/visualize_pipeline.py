@@ -1,11 +1,16 @@
 """
-tools/visualize_pipeline.py — render attempt 8's pipeline as labelled stage images.
+tools/visualize_pipeline.py — render attempt 10's pipeline as labelled stage images.
 
-Re-uses attempt-8's internal primitives (_extract_boundary, _ransac_topk,
+Re-uses attempt-10's internal primitives (_extract_boundary, _ransac_topk,
 _ettinger_score) so the visualization is exactly what the detector does, not a
 re-implementation that could drift. Output is a directory of PNGs, one per
 pipeline stage, with a title strip at the top — suitable for dropping into a
 slide deck.
+
+Stages 1-6 visualise the L + b* RANSAC + Ettinger rerank branch. Stage 7 is the
+output of attempt 10's full detect_horizon(), which also pools in DP-boundary
+and top-connected sky-envelope candidates before the final rerank — so the
+stage-7 winner can come from a candidate source that isn't shown in stage 5/6.
 
 Usage:
     .venv/bin/python tools/visualize_pipeline.py <image-path> --out <out-dir>
@@ -20,13 +25,13 @@ import cv2
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-ATTEMPT_DIR = REPO_ROOT / "attempts" / "attempt-8-temporal-prior"
+ATTEMPT_DIR = REPO_ROOT / "attempts" / "attempt-10-top-connected-sky"
 
 
 def load_attempt_module():
-    spec = importlib.util.spec_from_file_location("attempt8", ATTEMPT_DIR / "horizon_detect.py")
+    spec = importlib.util.spec_from_file_location("attempt10", ATTEMPT_DIR / "horizon_detect.py")
     module = importlib.util.module_from_spec(spec)
-    sys.modules["attempt8"] = module
+    sys.modules["attempt10"] = module
     spec.loader.exec_module(module)
     return module
 
